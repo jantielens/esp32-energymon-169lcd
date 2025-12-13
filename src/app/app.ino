@@ -3,9 +3,14 @@
 #include "config_manager.h"
 #include "web_portal.h"
 #include "log_manager.h"
+#include "mqtt_manager.h"
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <lwip/netif.h>
+
+#if HAS_DISPLAY
+#include "display_manager.h"
+#endif
 
 // Configuration
 DeviceConfig device_config;
@@ -21,6 +26,10 @@ unsigned long lastHeartbeat = 0;
 // WiFi watchdog for connection monitoring
 const unsigned long WIFI_CHECK_INTERVAL = 10000; // 10 seconds
 unsigned long lastWiFiCheck = 0;
+
+// MQTT and display update interval
+const unsigned long DISPLAY_UPDATE_INTERVAL = 1000; // 1 second
+unsigned long lastDisplayUpdate = 0;
 
 // WiFi event handlers for connection lifecycle monitoring
 void onWiFiConnected(WiFiEvent_t event, WiFiEventInfo_t info) {
@@ -61,6 +70,15 @@ void setup()
   #if HAS_BUILTIN_LED
   Logger.logLinef("LED: GPIO%d (active %s)", LED_PIN, LED_ACTIVE_HIGH ? "HIGH" : "LOW");
   #endif
+
+  // Initialize display
+  #if HAS_DISPLAY
+  Logger.logMessage("Main", "Initializing 1.69\" LCD display");
+  display_init();
+  display_set_boot_progress(0, "Display initialized");
+
+  Logger.logMessage("Main", "Display initialized - Splash shown");
+  #endif
   // Example: Call board-specific function if available
   // #ifdef HAS_CUSTOM_IDENTIFIER
   // Logger.logLinef("Board: %s", board_get_custom_identifier());
@@ -79,6 +97,10 @@ void setup()
   // Try to load saved configuration
   config_loaded = config_manager_load(&device_config);
   
+  #if HAS_DISPLAY
+  display_set_boot_progress(20, "Config loaded");
+  #endif
+  
   if (!config_loaded) {
     // No config found - set default device name
     String default_name = config_manager_get_default_device_name();
@@ -89,14 +111,26 @@ void setup()
   // Start WiFi BEFORE initializing web server (critical for ESP32-C3)
   if (!config_loaded) {
     Logger.logMessage("Main", "No config - starting AP mode");
+    #if HAS_DISPLAY
+    display_set_boot_progress(40, "Starting AP mode");
+    #endif
     web_portal_start_ap();
   } else {
     Logger.logMessage("Main", "Config loaded - connecting to WiFi");
+    #if HAS_DISPLAY
+    display_set_boot_progress(40, "Connecting to WiFi...");
+    #endif
     if (connect_wifi()) {
       start_mdns();
+      #if HAS_DISPLAY
+      display_set_boot_progress(60, "WiFi connected");
+      #endif
     } else {
       // Hard reset retry - WiFi hardware may be in bad state
       Logger.logMessage("Main", "WiFi failed - attempting hard reset");
+      #if HAS_DISPLAY
+      display_set_boot_progress(50, "WiFi retry...");
+      #endif
       Logger.logBegin("WiFi Hard Reset");
       WiFi.mode(WIFI_OFF);
       delay(1000);  // Longer delay to fully reset hardware
@@ -107,8 +141,14 @@ void setup()
       // One more attempt after hard reset
       if (connect_wifi()) {
         start_mdns();
+        #if HAS_DISPLAY
+        display_set_boot_progress(60, "WiFi connected");
+        #endif
       } else {
         Logger.logMessage("Main", "WiFi failed after reset - fallback to AP");
+        #if HAS_DISPLAY
+        display_set_boot_progress(60, "AP mode fallback");
+        #endif
         web_portal_start_ap();
       }
     }
@@ -116,6 +156,23 @@ void setup()
   
   // Initialize web portal AFTER WiFi is started
   web_portal_init(&device_config);
+  #if HAS_DISPLAY
+  display_set_boot_progress(80, "Web portal ready");
+  #endif
+  
+  // Initialize MQTT if WiFi connected and broker configured
+  if (config_loaded && WiFi.status() == WL_CONNECTED) {
+    #if HAS_DISPLAY
+    display_set_boot_progress(90, "Connecting to MQTT...");
+    #endif
+    mqtt_manager_init(&device_config);
+  }
+  
+  #if HAS_DISPLAY
+  display_set_boot_progress(100, "Boot complete");
+  delay(2000);  // Wait 2 seconds for FPS to stabilize
+  display_show_power_screen();
+  #endif
   
   lastHeartbeat = millis();
   Logger.logMessage("Main", "Setup complete");
@@ -123,10 +180,25 @@ void setup()
 
 void loop()
 {
+  unsigned long currentMillis = millis();
+  
   // Handle web portal (DNS for captive portal)
   web_portal_handle();
   
-  unsigned long currentMillis = millis();
+  // Handle MQTT messages
+  mqtt_manager_loop();
+
+  #if HAS_DISPLAY
+  display_update();  // FPS counting now happens inside display_update()
+  
+  // Update display with MQTT values periodically
+  if (currentMillis - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL) {
+    float solar = mqtt_manager_get_solar_power();
+    float grid = mqtt_manager_get_grid_power();
+    display_update_energy(solar, grid);
+    lastDisplayUpdate = currentMillis;
+  }
+  #endif
   
   // WiFi watchdog - monitor connection and reconnect if needed
   // Only run if we're not in AP mode (AP mode is the fallback, should stay active)
@@ -135,6 +207,7 @@ void loop()
       Logger.logMessage("WiFi Watchdog", "Connection lost - attempting reconnect");
       if (connect_wifi()) {
         start_mdns();
+        mqtt_manager_init(&device_config);
       }
     }
     lastWiFiCheck = currentMillis;

@@ -50,6 +50,33 @@
             </section>
             </div>
 
+            <!-- MQTT Settings Section (full-width) -->
+            <section class="section">
+                <h2>📡 MQTT Settings</h2>
+                <div class="grid-2col">
+                    <div class="form-group">
+                        <label for="mqtt_broker">MQTT Broker</label>
+                        <input type="text" id="mqtt_broker" name="mqtt_broker" maxlength="63" placeholder="e.g. mqtt.example.com">
+                        <small>MQTT server hostname or IP address</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="mqtt_port">MQTT Port</label>
+                        <input type="number" id="mqtt_port" name="mqtt_port" min="1" max="65535" placeholder="1883">
+                        <small>Default: 1883</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="mqtt_username">MQTT Username</label>
+                        <input type="text" id="mqtt_username" name="mqtt_username" maxlength="31" placeholder="Optional">
+                        <small>Leave empty if no authentication required</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="mqtt_password">MQTT Password</label>
+                        <input type="password" id="mqtt_password" name="mqtt_password" maxlength="63" placeholder="Optional">
+                        <small>Leave empty if no authentication required</small>
+                    </div>
+                </div>
+            </section>
+
             <!-- Network Configuration Section (full-width) -->
             <section class="section">
                 <h2>🌐 Network Configuration (Optional)</h2>

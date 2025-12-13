@@ -26,6 +26,10 @@
 #define CONFIG_DEVICE_NAME_MAX_LEN 32
 #define CONFIG_IP_STR_MAX_LEN 16
 #define CONFIG_DUMMY_MAX_LEN 64
+#define CONFIG_MQTT_BROKER_MAX_LEN 64
+#define CONFIG_MQTT_USERNAME_MAX_LEN 32
+#define CONFIG_MQTT_PASSWORD_MAX_LEN 64
+#define CONFIG_MQTT_TOPIC_MAX_LEN 128
 
 // Configuration structure
 struct DeviceConfig {
@@ -45,6 +49,14 @@ struct DeviceConfig {
     
     // Dummy setting (example for extensibility)
     char dummy_setting[CONFIG_DUMMY_MAX_LEN];
+    
+    // MQTT settings
+    char mqtt_broker[CONFIG_MQTT_BROKER_MAX_LEN];
+    uint16_t mqtt_port;
+    char mqtt_username[CONFIG_MQTT_USERNAME_MAX_LEN];
+    char mqtt_password[CONFIG_MQTT_PASSWORD_MAX_LEN];
+    char mqtt_topic_solar[CONFIG_MQTT_TOPIC_MAX_LEN];
+    char mqtt_topic_grid[CONFIG_MQTT_TOPIC_MAX_LEN];
     
     // Validation flag (magic number to detect valid config)
     uint32_t magic;

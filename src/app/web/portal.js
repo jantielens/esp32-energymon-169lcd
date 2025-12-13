@@ -455,6 +455,18 @@ async function loadConfig() {
         // Dummy setting
         setValueIfExists('dummy_setting', config.dummy_setting);
         
+        // MQTT settings
+        setValueIfExists('mqtt_broker', config.mqtt_broker);
+        setValueIfExists('mqtt_port', config.mqtt_port || 1883);
+        setValueIfExists('mqtt_username', config.mqtt_username);
+        const mqttPwdField = document.getElementById('mqtt_password');
+        if (mqttPwdField) {
+            mqttPwdField.value = '';
+            mqttPwdField.placeholder = (config.mqtt_broker && config.mqtt_broker !== '') ? '(saved - leave blank to keep)' : '';
+        }
+        setValueIfExists('mqtt_topic_solar', config.mqtt_topic_solar);
+        setValueIfExists('mqtt_topic_grid', config.mqtt_topic_grid);
+        
         // Hide loading overlay (silent load)
         const overlay = document.getElementById('form-loading-overlay');
         if (overlay) overlay.style.display = 'none';
@@ -482,7 +494,9 @@ function extractFormFields(formData) {
     // Build config from only the fields that exist on this page
     const config = {};
     const fields = ['wifi_ssid', 'wifi_password', 'device_name', 'fixed_ip', 
-                    'subnet_mask', 'gateway', 'dns1', 'dns2', 'dummy_setting'];
+                    'subnet_mask', 'gateway', 'dns1', 'dns2', 'dummy_setting',
+                    'mqtt_broker', 'mqtt_port', 'mqtt_username', 'mqtt_password',
+                    'mqtt_topic_solar', 'mqtt_topic_grid'];
     
     fields.forEach(field => {
         const value = getFieldValue(field);

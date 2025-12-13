@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="560" viewBox="0 0 980 560">
+  <title>ESP32-C3 Super Mini Wiring (Waveshare 1.69" LCD)</title>
+  <desc>Physical header order mockup of ESP32-C3 Super Mini with labeled wires to LCD signals. No LCD drawing included.</desc>
+
+  <style>
+    .board { fill: #0b6b3a; stroke: #111827; stroke-width: 3; }
+    .usb { fill: #9ca3af; stroke: #111827; stroke-width: 2; }
+    .pin { fill: #9ca3af; stroke: #111827; stroke-width: 2; }
+    .text { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; fill: #111827; }
+    .label { font-size: 16px; font-weight: 600; }
+    .small { font-size: 14px; }
+    .wire { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+    .wireOutline { stroke: #111827; stroke-width: 6.5; }
+    .wireCore { stroke-width: 3.5; }
+    .wireLabel { font-size: 14px; font-weight: 700; }
+    .note { font-size: 13px; fill: #374151; }
+
+    .chipBody { fill: #111827; stroke: #0b1220; stroke-width: 2; }
+    .chipText { fill: #ffffff; font-size: 16px; font-weight: 800; letter-spacing: 0.5px; }
+    .chipSubText { fill: #d1d5db; font-size: 12px; font-weight: 700; }
+    .chipPin { stroke: #111827; stroke-width: 3; stroke-linecap: round; }
+
+    /* Wire colors by function */
+    .wire-vcc { stroke: #dc2626; }
+    .wire-gnd { stroke: #111827; }
+    .wire-spi { stroke: #2563eb; }
+    .wire-ctrl { stroke: #f59e0b; }
+    .wire-bl { stroke: #7c3aed; }
+  </style>
+
+  <!-- Page background (keeps text readable in dark-mode viewers) -->
+  <rect x="0" y="0" width="100%" height="100%" fill="#ffffff"/>
+
+  <!-- Header -->
+  <text x="18" y="28" class="text label">ESP32-C3 Super Mini → Waveshare 1.69" LCD (wires only)</text>
+  <text x="18" y="50" class="text note">Pins shown in physical header order; verify against your board silkscreen (clones can vary).</text>
+
+  <!-- Board outline (wider so pin labels don't collide with center chip) -->
+  <rect x="250" y="90" width="480" height="420" rx="18" class="board"/>
+
+  <!-- USB-C connector -->
+  <rect x="445" y="72" width="90" height="40" rx="8" class="usb"/>
+  <text x="490" y="98" text-anchor="middle" class="text small">USB-C</text>
+
+  <!-- Column header labels intentionally omitted -->
+
+  <!-- ESP32 chip (center of board) -->
+  <g>
+    <!-- Chip body -->
+    <rect x="430" y="270" width="120" height="90" rx="10" class="chipBody"/>
+
+    <!-- Chip pins (simple stylized) -->
+    <!-- Left pins -->
+    <line x1="430" y1="285" x2="414" y2="285" class="chipPin"/>
+    <line x1="430" y1="305" x2="414" y2="305" class="chipPin"/>
+    <line x1="430" y1="325" x2="414" y2="325" class="chipPin"/>
+    <line x1="430" y1="345" x2="414" y2="345" class="chipPin"/>
+
+    <!-- Right pins -->
+    <line x1="550" y1="285" x2="566" y2="285" class="chipPin"/>
+    <line x1="550" y1="305" x2="566" y2="305" class="chipPin"/>
+    <line x1="550" y1="325" x2="566" y2="325" class="chipPin"/>
+    <line x1="550" y1="345" x2="566" y2="345" class="chipPin"/>
+
+    <!-- Top pins -->
+    <line x1="455" y1="270" x2="455" y2="254" class="chipPin"/>
+    <line x1="480" y1="270" x2="480" y2="254" class="chipPin"/>
+    <line x1="505" y1="270" x2="505" y2="254" class="chipPin"/>
+    <line x1="530" y1="270" x2="530" y2="254" class="chipPin"/>
+
+    <!-- Bottom pins -->
+    <line x1="455" y1="360" x2="455" y2="376" class="chipPin"/>
+    <line x1="480" y1="360" x2="480" y2="376" class="chipPin"/>
+    <line x1="505" y1="360" x2="505" y2="376" class="chipPin"/>
+    <line x1="530" y1="360" x2="530" y2="376" class="chipPin"/>
+  </g>
+
+  <!-- Pin rows (8 rows) -->
+    <!-- Layout constants:
+      rowY: 160 + i*42
+      left pin center: (280, rowY)
+      right pin center: (700, rowY)
+      left text x: 305
+      right text x: 675 (right-aligned)
+    -->
+
+  <!-- Row 1 -->
+  <circle cx="280" cy="160" r="7" class="pin"/>
+  <text x="305" y="165" class="text small">GPIO5</text>
+  <circle cx="700" cy="160" r="7" class="pin"/>
+  <text x="675" y="165" text-anchor="end" class="text small">5V</text>
+
+  <!-- Row 2 -->
+  <circle cx="280" cy="202" r="7" class="pin"/>
+  <text x="305" y="207" class="text small">GPIO6 (MOSI)</text>
+  <circle cx="700" cy="202" r="7" class="pin"/>
+  <text x="675" y="207" text-anchor="end" class="text small">GND</text>
+
+  <!-- Row 3 -->
+  <circle cx="280" cy="244" r="7" class="pin"/>
+  <text x="305" y="249" class="text small">GPIO7 (CS)</text>
+  <circle cx="700" cy="244" r="7" class="pin"/>
+  <text x="675" y="249" text-anchor="end" class="text small">3V3</text>
+
+  <!-- Row 4 -->
+  <circle cx="280" cy="286" r="7" class="pin"/>
+  <text x="305" y="291" class="text small">GPIO8 (LED)</text>
+  <circle cx="700" cy="286" r="7" class="pin"/>
+  <text x="675" y="291" text-anchor="end" class="text small">GPIO4 (SCK)</text>
+
+  <!-- Row 5 -->
+  <circle cx="280" cy="328" r="7" class="pin"/>
+  <text x="305" y="333" class="text small">GPIO9 (BOOT)</text>
+  <circle cx="700" cy="328" r="7" class="pin"/>
+  <text x="675" y="333" text-anchor="end" class="text small">GPIO3 (DC)</text>
+
+  <!-- Row 6 -->
+  <circle cx="280" cy="370" r="7" class="pin"/>
+  <text x="305" y="375" class="text small">GPIO10</text>
+  <circle cx="700" cy="370" r="7" class="pin"/>
+  <text x="675" y="375" text-anchor="end" class="text small">GPIO2</text>
+
+  <!-- Row 7 -->
+  <circle cx="280" cy="412" r="7" class="pin"/>
+  <text x="305" y="417" class="text small">GPIO20 (RST)</text>
+  <circle cx="700" cy="412" r="7" class="pin"/>
+  <text x="675" y="417" text-anchor="end" class="text small">GPIO1 (BL)</text>
+
+  <!-- Row 8 -->
+  <circle cx="280" cy="454" r="7" class="pin"/>
+  <text x="305" y="459" class="text small">GPIO21</text>
+  <circle cx="700" cy="454" r="7" class="pin"/>
+  <text x="675" y="459" text-anchor="end" class="text small">GPIO0</text>
+
+  <!-- Wires (no LCD drawing; labels at ends) -->
+  <!-- Left side wires -->
+  <g>
+    <path class="wire wireOutline" d="M280 202 Q215 214 150 202"/>
+    <path class="wire wireCore wire-spi" d="M280 202 Q215 214 150 202"/>
+  </g>
+  <text x="130" y="207" text-anchor="end" class="text wireLabel">LCD DIN</text>
+
+  <g>
+    <path class="wire wireOutline" d="M280 244 Q215 256 150 244"/>
+    <path class="wire wireCore wire-ctrl" d="M280 244 Q215 256 150 244"/>
+  </g>
+  <text x="130" y="249" text-anchor="end" class="text wireLabel">LCD CS</text>
+
+  <g>
+    <path class="wire wireOutline" d="M280 412 Q215 424 150 412"/>
+    <path class="wire wireCore wire-ctrl" d="M280 412 Q215 424 150 412"/>
+  </g>
+  <text x="130" y="417" text-anchor="end" class="text wireLabel">LCD RST</text>
+
+  <!-- Right side wires -->
+  <g>
+    <path class="wire wireOutline" d="M700 244 Q765 256 830 244"/>
+    <path class="wire wireCore wire-vcc" d="M700 244 Q765 256 830 244"/>
+  </g>
+  <text x="850" y="249" class="text wireLabel">LCD VCC</text>
+
+  <g>
+    <path class="wire wireOutline" d="M700 202 Q765 214 830 202"/>
+    <path class="wire wireCore wire-gnd" d="M700 202 Q765 214 830 202"/>
+  </g>
+  <text x="850" y="207" class="text wireLabel">LCD GND</text>
+
+  <g>
+    <path class="wire wireOutline" d="M700 286 Q765 298 830 286"/>
+    <path class="wire wireCore wire-spi" d="M700 286 Q765 298 830 286"/>
+  </g>
+  <text x="850" y="291" class="text wireLabel">LCD CLK</text>
+
+  <g>
+    <path class="wire wireOutline" d="M700 328 Q765 340 830 328"/>
+    <path class="wire wireCore wire-ctrl" d="M700 328 Q765 340 830 328"/>
+  </g>
+  <text x="850" y="333" class="text wireLabel">LCD DC</text>
+
+  <g>
+    <path class="wire wireOutline" d="M700 412 Q765 424 830 412"/>
+    <path class="wire wireCore wire-bl" d="M700 412 Q765 424 830 412"/>
+  </g>
+  <text x="850" y="417" class="text wireLabel">LCD BL</text>
+
+  <!-- Legend (intentionally omitted: wires show what is used) -->
+</svg>

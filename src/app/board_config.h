@@ -89,9 +89,47 @@
 // #endif
 //
 // Display:
-// #ifndef HAS_DISPLAY
-// #define HAS_DISPLAY false
-// #endif
+// Display: 1.69" LCD (ST7789V2)
+#ifndef HAS_DISPLAY
+#define HAS_DISPLAY true
+#endif
+
+#ifndef LCD_WIDTH
+#define LCD_WIDTH 240
+#endif
+
+#ifndef LCD_HEIGHT
+#define LCD_HEIGHT 280
+#endif
+
+// Display orientation
+#ifndef LCD_ROTATION
+#define LCD_ROTATION 0  // 0=portrait, 1=landscape (90°), 2=portrait (180°), 3=landscape (270°)
+#endif
+
+#ifndef LCD_CS_PIN
+#define LCD_CS_PIN 5      // Chip Select
+#endif
+
+#ifndef LCD_DC_PIN
+#define LCD_DC_PIN 16     // Data/Command
+#endif
+
+#ifndef LCD_RST_PIN
+#define LCD_RST_PIN 17    // Reset
+#endif
+
+#ifndef LCD_BL_PIN
+#define LCD_BL_PIN 4      // Backlight (PWM)
+#endif
+
+#ifndef LCD_MOSI_PIN
+#define LCD_MOSI_PIN 23   // SPI MOSI
+#endif
+
+#ifndef LCD_SCK_PIN
+#define LCD_SCK_PIN 18    // SPI Clock
+#endif
 
 #endif // BOARD_CONFIG_H
 
