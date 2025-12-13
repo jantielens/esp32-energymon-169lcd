@@ -29,6 +29,7 @@
 #define KEY_MQTT_PASS      "mqtt_pass"
 #define KEY_MQTT_SOLAR     "mqtt_solar"
 #define KEY_MQTT_GRID      "mqtt_grid"
+#define KEY_LCD_BRIGHTNESS "lcd_bright"
 #define KEY_MAGIC          "magic"
 
 static Preferences preferences;
@@ -129,6 +130,9 @@ bool config_manager_load(DeviceConfig *config) {
     preferences.getString(KEY_MQTT_SOLAR, config->mqtt_topic_solar, CONFIG_MQTT_TOPIC_MAX_LEN);
     preferences.getString(KEY_MQTT_GRID, config->mqtt_topic_grid, CONFIG_MQTT_TOPIC_MAX_LEN);
     
+    // Load LCD settings
+    config->lcd_brightness = preferences.getUChar(KEY_LCD_BRIGHTNESS, 100);
+    
     config->magic = magic;
     
     preferences.end();
@@ -184,6 +188,9 @@ bool config_manager_save(const DeviceConfig *config) {
     preferences.putString(KEY_MQTT_PASS, config->mqtt_password);
     preferences.putString(KEY_MQTT_SOLAR, config->mqtt_topic_solar);
     preferences.putString(KEY_MQTT_GRID, config->mqtt_topic_grid);
+    
+    // Save LCD settings
+    preferences.putUChar(KEY_LCD_BRIGHTNESS, config->lcd_brightness);
     
     // Save magic number last (indicates valid config)
     preferences.putUInt(KEY_MAGIC, CONFIG_MAGIC);
@@ -243,4 +250,6 @@ void config_manager_print(const DeviceConfig *config) {
     } else {
         Logger.logLine("IP: DHCP");
     }
+    
+    Logger.logLinef("LCD Brightness: %d%%", config->lcd_brightness);
 }

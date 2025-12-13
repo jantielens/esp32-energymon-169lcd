@@ -401,6 +401,47 @@ Returns real-time device health statistics.
 - `temperature`: `null` on chips without internal sensor (original ESP32)
 - `wifi_rssi`, `wifi_channel`, `ip_address`, `hostname`: `null` when not connected
 
+### Display Control
+
+#### `GET /api/brightness`
+
+Returns current LCD backlight brightness level.
+
+**Response:**
+```json
+{
+  "brightness": 75
+}
+```
+
+**Notes:**
+- Returns real-time brightness value (0-100%)
+- Value may differ from saved config if adjusted via slider without saving
+
+#### `POST /api/brightness`
+
+Set LCD backlight brightness in real-time (does not persist to NVS).
+
+**Request Body:**
+```json
+{
+  "brightness": 50
+}
+```
+
+**Response:**
+```json
+{
+  "success": true
+}
+```
+
+**Notes:**
+- Valid range: 0-100 (clamped if outside range)
+- Changes apply immediately to hardware
+- **Not persisted** - value resets on reboot unless saved via `/api/config`
+- Used for real-time slider updates in web UI
+
 ### Configuration Management
 
 #### `GET /api/config`
@@ -419,9 +460,13 @@ Returns current device configuration (passwords excluded).
   "gateway": "",
   "dns1": "",
   "dns2": "",
+  "lcd_brightness": 100,
   "dummy_setting": ""
 }
 ```
+
+**Notes:**
+- `lcd_brightness`: Saved brightness value (0-100%), persisted in NVS
 
 #### `POST /api/config`
 
@@ -438,6 +483,7 @@ Save new configuration. Device reboots after successful save.
   "gateway": "192.168.1.1",
   "dns1": "8.8.8.8",
   "dns2": "8.8.4.4",
+  "lcd_brightness": 75,
   "dummy_setting": "value"
 }
 ```

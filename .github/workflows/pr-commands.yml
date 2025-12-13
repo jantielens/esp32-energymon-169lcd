@@ -79,15 +79,6 @@ jobs:
             content: 'rocket'
           });
     
-    - name: Checkout repository
-      if: steps.check-command.outputs.command != 'none' && steps.check-permissions.outputs.allowed == 'true'
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-        # Use PAT instead of GITHUB_TOKEN to allow triggering release workflow
-        # GITHUB_TOKEN doesn't trigger workflows on tag push (security feature)
-        token: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
-    
     - name: Get PR details
       if: steps.check-command.outputs.command != 'none' && steps.check-permissions.outputs.allowed == 'true'
       id: pr-details
@@ -106,6 +97,15 @@ jobs:
           core.setOutput('merged', pr.merged);
           
           return pr;
+    
+    - name: Checkout repository
+      if: steps.check-command.outputs.command != 'none' && steps.check-permissions.outputs.allowed == 'true'
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: ${{ steps.pr-details.outputs.head_ref }}
+        # Use PAT to allow triggering release workflow on tag push
+        token: ${{ secrets.PAT_TOKEN }}
     
     - name: Check if PR is mergeable
       if: steps.check-command.outputs.command != 'none' && steps.check-permissions.outputs.allowed == 'true'
