@@ -46,8 +46,8 @@ PROJECT_DISPLAY_NAME="ESP32 Template"
 #   ["esp32:esp32:dfrobot_firebeetle2_esp32c6:CDCOnBoot=cdc"]="esp32c6" # C6 with USB CDC enabled
 #   ["esp32:esp32:esp32c6:CDCOnBoot=cdc"]="esp32c6supermini"            # C6 with USB CDC enabled (generic Super Mini variant)
 declare -A FQBN_TARGETS=(
-    ["esp32:esp32:esp32"]="esp32"
-    ["esp32:esp32:nologo_esp32c3_super_mini:CDCOnBoot=cdc"]="esp32c3"
+    ["esp32:esp32:esp32:PartitionScheme=min_spiffs"]="esp32"
+    ["esp32:esp32:nologo_esp32c3_super_mini:PartitionScheme=huge_app,CDCOnBoot=default"]="esp32c3"
 )
 
 # Default board (used when only one board is configured)
@@ -86,15 +86,23 @@ find_arduino_cli() {
 # Returns /dev/ttyUSB0 if exists, otherwise /dev/ttyACM0
 # Returns exit code 1 if no port found
 find_serial_port() {
-    if [ -e /dev/ttyUSB0 ]; then
-        echo "/dev/ttyUSB0"
+    # Prefer classic USB-serial adapters (ttyUSB*), then USB CDC (ttyACM*)
+    # Return the first match found.
+    local port
+
+    port=$(ls /dev/ttyUSB* 2>/dev/null | head -n 1) || true
+    if [[ -n "$port" ]]; then
+        echo "$port"
         return 0
-    elif [ -e /dev/ttyACM0 ]; then
-        echo "/dev/ttyACM0"
-        return 0
-    else
-        return 1
     fi
+
+    port=$(ls /dev/ttyACM* 2>/dev/null | head -n 1) || true
+    if [[ -n "$port" ]]; then
+        echo "$port"
+        return 0
+    fi
+
+    return 1
 }
 
 # Get board name for a given FQBN

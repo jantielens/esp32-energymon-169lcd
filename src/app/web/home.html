@@ -8,15 +8,19 @@
         <form id="config-form">
             <!-- Hello World and Sample Settings (2-column on desktop) -->
             <div class="grid-2col">
-            <!-- Hello World Section -->
+            <!-- MQTT Topics Section -->
             <section class="section">
-                <h2>👋 Hello World</h2>
-                <p style="font-size: 16px; line-height: 1.6; color: #1d1d1f; margin-bottom: 16px;">
-                    Welcome to your ESP32 device! This is a simple demonstration section.
-                </p>
-                <p style="font-size: 14px; color: #86868b; margin: 0;">
-                    💡 <strong>Tip:</strong> You can modify this welcome message in <code style="background: #f5f5f7; padding: 2px 6px; border-radius: 4px; font-size: 13px;">src/app/web/home.html</code>
-                </p>
+                <h2>📊 MQTT Topics</h2>
+                <div class="form-group">
+                    <label for="mqtt_topic_solar">Solar Power Topic</label>
+                    <input type="text" id="mqtt_topic_solar" name="mqtt_topic_solar" maxlength="127" placeholder="e.g. home/solar/power">
+                    <small>MQTT topic for solar power readings (in kW)</small>
+                </div>
+                <div class="form-group">
+                    <label for="mqtt_topic_grid">Grid Power Topic</label>
+                    <input type="text" id="mqtt_topic_grid" name="mqtt_topic_grid" maxlength="127" placeholder="e.g. home/grid/power">
+                    <small>MQTT topic for grid power readings (JSON with 'value' field in kW)</small>
+                </div>
             </section>
 
             <!-- Sample Settings Section -->

@@ -23,6 +23,12 @@
 #define KEY_DNS1           "dns1"
 #define KEY_DNS2           "dns2"
 #define KEY_DUMMY          "dummy"
+#define KEY_MQTT_BROKER    "mqtt_broker"
+#define KEY_MQTT_PORT      "mqtt_port"
+#define KEY_MQTT_USER      "mqtt_user"
+#define KEY_MQTT_PASS      "mqtt_pass"
+#define KEY_MQTT_SOLAR     "mqtt_solar"
+#define KEY_MQTT_GRID      "mqtt_grid"
 #define KEY_MAGIC          "magic"
 
 static Preferences preferences;
@@ -115,6 +121,14 @@ bool config_manager_load(DeviceConfig *config) {
     // Load dummy setting
     preferences.getString(KEY_DUMMY, config->dummy_setting, CONFIG_DUMMY_MAX_LEN);
     
+    // Load MQTT settings
+    preferences.getString(KEY_MQTT_BROKER, config->mqtt_broker, CONFIG_MQTT_BROKER_MAX_LEN);
+    config->mqtt_port = preferences.getUShort(KEY_MQTT_PORT, 1883);
+    preferences.getString(KEY_MQTT_USER, config->mqtt_username, CONFIG_MQTT_USERNAME_MAX_LEN);
+    preferences.getString(KEY_MQTT_PASS, config->mqtt_password, CONFIG_MQTT_PASSWORD_MAX_LEN);
+    preferences.getString(KEY_MQTT_SOLAR, config->mqtt_topic_solar, CONFIG_MQTT_TOPIC_MAX_LEN);
+    preferences.getString(KEY_MQTT_GRID, config->mqtt_topic_grid, CONFIG_MQTT_TOPIC_MAX_LEN);
+    
     config->magic = magic;
     
     preferences.end();
@@ -162,6 +176,14 @@ bool config_manager_save(const DeviceConfig *config) {
     
     // Save dummy setting
     preferences.putString(KEY_DUMMY, config->dummy_setting);
+    
+    // Save MQTT settings
+    preferences.putString(KEY_MQTT_BROKER, config->mqtt_broker);
+    preferences.putUShort(KEY_MQTT_PORT, config->mqtt_port);
+    preferences.putString(KEY_MQTT_USER, config->mqtt_username);
+    preferences.putString(KEY_MQTT_PASS, config->mqtt_password);
+    preferences.putString(KEY_MQTT_SOLAR, config->mqtt_topic_solar);
+    preferences.putString(KEY_MQTT_GRID, config->mqtt_topic_grid);
     
     // Save magic number last (indicates valid config)
     preferences.putUInt(KEY_MAGIC, CONFIG_MAGIC);

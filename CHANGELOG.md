@@ -11,6 +11,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.0] - 2025-12-13
+
+### Added
+- **1.69" LCD Display Support**: Full integration with Waveshare ST7789V2 display
+  - LVGL 8.4.0 GUI framework with software rotation
+  - Custom LCD driver with hardware SPI at 60MHz
+  - Splash screen with boot progress tracking
+  - Power monitoring screen with 3-column layout (Solar → Home ← Grid)
+  - FPS counter for performance monitoring
+  - Board-specific pin mappings for ESP32 and ESP32-C3
+- **MQTT Energy Monitoring**: Real-time power consumption tracking
+  - PubSubClient integration for MQTT connectivity
+  - Solar power topic subscription (plain kW values)
+  - Grid power topic subscription (JSON with 'value' field)
+  - Automatic home consumption calculation (grid + solar)
+  - Visual arrow indicators for power flow direction
+  - 5-second reconnection retry with backoff
+- **Configuration Management**: Extended settings for MQTT and display
+  - MQTT broker, port, username, password configuration
+  - Solar and grid power topic settings
+  - NVS persistence for all MQTT settings
+  - Web portal integration on Network and Home pages
+- **Pinout Documentation**: Complete wiring guides
+  - ESP32 DevKit V1 pinout diagram (SVG)
+  - ESP32-C3 Super Mini pinout diagram (SVG)
+  - Detailed pin mapping tables
+  - Physical connection tips and troubleshooting
+
+### Changed
+- **Build Configuration**: Updated for multi-board display support
+  - ESP32: min_spiffs partition scheme for LVGL
+  - ESP32-C3: huge_app partition + software rotation
+  - Default CDC-on-boot enabled for ESP32-C3
+  - Serial port auto-detection improved (ttyUSB* first, then ttyACM*)
+- **Board Override System**: ESP32-C3 display pin mappings
+  - SPI pins: GPIO4 (SCK), GPIO6 (MOSI), GPIO7 (CS)
+  - Control pins: GPIO3 (DC), GPIO20 (RST), GPIO1 (BL)
+  - Landscape mode (90°) via LVGL software rotation
+- **Library Dependencies**: Added PubSubClient@2.8 for MQTT
+- **Web Portal Home Page**: Replaced Hello World with MQTT Topics configuration
+  - Solar power topic input field
+  - Grid power topic input field
+  - 2-column responsive grid layout
+
+### Fixed
+- **WiFi Watchdog**: MQTT reconnection on WiFi recovery
+- **Display Refresh**: 10ms LVGL timer for smooth 60+ FPS
+- **Memory Management**: Optimized LVGL buffer sizes (48KB heap, 24KB layer buffer)
+
+### Performance
+- **Display**: 60+ FPS with double buffering and hardware SPI
+- **Flash Usage**: ESP32: 82%, ESP32-C3: 81%
+- **MQTT**: 512-byte packet buffer for large JSON messages
+
+---
+
 ## [0.0.14] - 2025-12-11
 
 ### Fixed

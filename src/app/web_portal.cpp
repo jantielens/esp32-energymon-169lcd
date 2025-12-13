@@ -176,6 +176,14 @@ void handleGetConfig(AsyncWebServerRequest *request) {
     // Dummy setting
     doc["dummy_setting"] = current_config->dummy_setting;
     
+    // MQTT settings
+    doc["mqtt_broker"] = current_config->mqtt_broker;
+    doc["mqtt_port"] = current_config->mqtt_port;
+    doc["mqtt_username"] = current_config->mqtt_username;
+    doc["mqtt_password"] = ""; // Don't send password
+    doc["mqtt_topic_solar"] = current_config->mqtt_topic_solar;
+    doc["mqtt_topic_grid"] = current_config->mqtt_topic_grid;
+    
     String response;
     serializeJson(doc, response);
     
@@ -244,6 +252,30 @@ void handlePostConfig(AsyncWebServerRequest *request, uint8_t *data, size_t len,
     // Dummy setting - only update if field exists
     if (doc.containsKey("dummy_setting")) {
         strlcpy(current_config->dummy_setting, doc["dummy_setting"] | "", CONFIG_DUMMY_MAX_LEN);
+    }
+    
+    // MQTT settings - only update if fields exist
+    if (doc.containsKey("mqtt_broker")) {
+        strlcpy(current_config->mqtt_broker, doc["mqtt_broker"] | "", CONFIG_MQTT_BROKER_MAX_LEN);
+    }
+    if (doc.containsKey("mqtt_port")) {
+        current_config->mqtt_port = doc["mqtt_port"] | 1883;
+    }
+    if (doc.containsKey("mqtt_username")) {
+        strlcpy(current_config->mqtt_username, doc["mqtt_username"] | "", CONFIG_MQTT_USERNAME_MAX_LEN);
+    }
+    // MQTT password - only update if provided and not empty
+    if (doc.containsKey("mqtt_password")) {
+        const char* mqtt_pass = doc["mqtt_password"];
+        if (mqtt_pass && strlen(mqtt_pass) > 0) {
+            strlcpy(current_config->mqtt_password, mqtt_pass, CONFIG_MQTT_PASSWORD_MAX_LEN);
+        }
+    }
+    if (doc.containsKey("mqtt_topic_solar")) {
+        strlcpy(current_config->mqtt_topic_solar, doc["mqtt_topic_solar"] | "", CONFIG_MQTT_TOPIC_MAX_LEN);
+    }
+    if (doc.containsKey("mqtt_topic_grid")) {
+        strlcpy(current_config->mqtt_topic_grid, doc["mqtt_topic_grid"] | "", CONFIG_MQTT_TOPIC_MAX_LEN);
     }
     
     current_config->magic = CONFIG_MAGIC;

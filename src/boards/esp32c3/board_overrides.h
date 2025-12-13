@@ -25,6 +25,30 @@
 #define LED_ACTIVE_HIGH true
 
 // ============================================================================
+// Display (Waveshare 1.69" ST7789V2) - ESP32-C3 Pin Mapping
+// ============================================================================
+// The ESP32-C3 does not have the same default SPI pins as the classic ESP32.
+
+// Display rotation: 0=portrait(0°), 1=landscape(90°), 2=portrait(180°), 3=landscape(270°)
+// Note: Using LVGL software rotation, panel stays in portrait mode
+#define LCD_ROTATION 1  // Landscape mode (90° clockwise via LVGL)
+// These overrides ensure the LCD wiring uses valid ESP32-C3 GPIOs.
+#define HAS_DISPLAY true
+
+#define LCD_WIDTH 240
+#define LCD_HEIGHT 280
+
+// SPI (common ESP32-C3 Super Mini header/pinout: SCK=GPIO4, MOSI=GPIO6, CS=GPIO7)
+#define LCD_SCK_PIN 4
+#define LCD_MOSI_PIN 6
+
+// Control pins (avoid strapping pins GPIO2/GPIO8/GPIO9)
+#define LCD_CS_PIN 7
+#define LCD_DC_PIN 3
+#define LCD_RST_PIN 20
+#define LCD_BL_PIN 1
+
+// ============================================================================
 // Example: Additional Board-Specific Hardware
 // ============================================================================
 // Uncomment and customize as needed for your board:
