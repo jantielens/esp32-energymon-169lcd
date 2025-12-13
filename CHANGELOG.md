@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Power Screen Visual Enhancements**: Comprehensive improvements to energy monitoring display
+  - Color-coded power indicators for at-a-glance status understanding
+    - Grid power: Green (exporting), White (low import <0.5kW), Orange (medium 0.5-2.5kW), Red (high >2.5kW)
+    - Home consumption: Green (<0.5kW), White (0.5-1kW), Orange (1-2kW), Red (>2kW)
+    - Solar generation: White (<0.5kW), Green (>0.5kW)
+  - Custom PNG icons for professional appearance
+    - High-quality 48×48px icons for grid, home, and solar
+    - Automatic PNG-to-LVGL conversion during build process
+    - Icon recoloring support matching power state colors
+  - Vertical bar charts for proportional power visualization
+    - 0-3kW scale for all three power sources
+    - Color-coded bars matching power state indicators
+    - Real-time updates synchronized with MQTT data
+  - RGB→BGR color swap in flush callback for correct anti-aliased colors on BGR displays
+
+### Fixed
+- Display color accuracy for anti-aliased text and graphics on ST7789V2 BGR panel
+
 ---
 
 ## [1.1.0] - 2025-12-13

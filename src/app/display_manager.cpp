@@ -20,12 +20,31 @@ static unsigned long fps_last_time = 0;
 static int fps_frame_count = 0;
 static float fps_current = 0.0f;
 
+// RGB565 to BGR565 color swap for anti-aliasing fix
+// LVGL blends colors in RGB space, but ST7789V2 display expects BGR
+// Swapping here fixes color artifacts on anti-aliased text edges
+static inline void rgb565_to_bgr565(uint16_t *pixels, uint32_t count) {
+    for (uint32_t i = 0; i < count; i++) {
+        uint16_t color = pixels[i];
+        // Extract RGB components from RGB565
+        uint16_t r = (color >> 11) & 0x1F;  // 5 bits red
+        uint16_t g = (color >> 5) & 0x3F;   // 6 bits green
+        uint16_t b = color & 0x1F;          // 5 bits blue
+        // Recombine as BGR565
+        pixels[i] = (b << 11) | (g << 5) | r;
+    }
+}
+
 static void display_flush_cb(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p) {
     const uint32_t w = (uint32_t)(area->x2 - area->x1 + 1);
     const uint32_t h = (uint32_t)(area->y2 - area->y1 + 1);
+    const uint32_t pixel_count = w * h;
+
+    // Swap RGB to BGR for display hardware
+    rgb565_to_bgr565((uint16_t *)color_p, pixel_count);
 
     lcd_set_window(area->x1, area->y1, area->x2, area->y2);
-    lcd_push_colors((uint16_t *)color_p, w * h);
+    lcd_push_colors((uint16_t *)color_p, pixel_count);
 
     lv_disp_flush_ready(disp);
 }
@@ -69,7 +88,7 @@ void display_init() {
     
     // Create FPS counter label on splash screen (will be recreated on screen changes)
     fps_label = lv_label_create(lv_scr_act());
-    lv_obj_set_style_text_color(fps_label, lv_color_hex(0x00FF00), 0);  // Green text
+    lv_obj_set_style_text_color(fps_label, lv_color_hex(0x0000FF), 0);  // BGR for red
     lv_obj_set_style_text_font(fps_label, &lv_font_montserrat_20, 0);   // Larger font
     lv_label_set_text(fps_label, "FPS: --");
     lv_obj_align(fps_label, LV_ALIGN_BOTTOM_RIGHT, -15, -5);  // 10px from corner
@@ -109,7 +128,7 @@ void display_show_power_screen() {
             lv_obj_del(fps_label);  // Delete from previous screen
         }
         fps_label = lv_label_create(lv_scr_act());
-        lv_obj_set_style_text_color(fps_label, lv_color_hex(0x00FF00), 0);  // Green text
+        lv_obj_set_style_text_color(fps_label, lv_color_hex(0x0000FF), 0);  // BGR for red
         lv_obj_set_style_text_font(fps_label, &lv_font_montserrat_20, 0);   // Larger font
         lv_label_set_text(fps_label, "FPS: --");
         lv_obj_align(fps_label, LV_ALIGN_BOTTOM_RIGHT, -15, -5);  // 10px from corner

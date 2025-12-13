@@ -4,10 +4,37 @@ This document describes the build system configuration and automated release wor
 
 ## Table of Contents
 
+- [Prerequisites](#prerequisites)
 - [Project Branding Configuration](#project-branding-configuration)
 - [Build System](#build-system)
 - [Release Workflow](#release-workflow)
 - [Release Scenarios](#release-scenarios)
+
+---
+
+## Prerequisites
+
+### Required Tools
+
+- **arduino-cli** - Installed automatically by `setup.sh`
+- **ESP32 board support** - Installed automatically by `setup.sh`
+- **Python 3** with **Pillow** library - Required for PNG icon conversion
+  - Installed automatically by `setup.sh`: `python3 -m pip install --user Pillow`
+  - Manual install: `pip install Pillow`
+
+### Initial Setup
+
+Run the setup script to install all dependencies:
+
+```bash
+./setup.sh
+```
+
+This will:
+1. Download and install arduino-cli
+2. Install ESP32 board support
+3. Install Arduino libraries from `arduino-libraries.txt`
+4. Install Python Pillow library for icon generation
 
 ---
 
@@ -79,12 +106,19 @@ Used for user-facing text and branding:
 
 ### Build Configuration
 
-The build system automatically applies project branding during compilation:
+The build system automatically applies project branding and generates assets during compilation:
 
 1. `build.sh` sources `config.sh` to get `PROJECT_NAME` and `PROJECT_DISPLAY_NAME`
-2. `tools/minify-web-assets.sh` performs template substitution in HTML files
-3. C++ `#define` statements are generated in `web_assets.h`
-4. Firmware compiles with branded values embedded
+2. **Icon generation**: `tools/png2icons.py` converts PNG icons from `assets/icons/` to LVGL C arrays
+3. **Web assets**: `tools/minify-web-assets.sh` performs template substitution in HTML files
+4. C++ `#define` statements are generated in `web_assets.h`
+5. Firmware compiles with branded values and assets embedded
+
+**Asset Generation**:
+- **Icons** (if `assets/icons/` exists): PNG files → LVGL image descriptors (`icons.c`, `icons.h`)
+- **Web assets**: HTML/CSS/JS → Minified + Gzipped C arrays (`web_assets.h`)
+
+Both are auto-generated during build and excluded from git (see `.gitignore`).
 
 ### Board-Specific Configuration
 

@@ -5,6 +5,10 @@ bin/arduino-cli
 # Auto-generated web assets
 src/app/web_assets.h
 
+# Auto-generated icon files (from PNG sources)
+src/app/icons.c
+src/app/icons.h
+
 # Arduino CLI configuration
 .arduino15/
 .cli-config.yml

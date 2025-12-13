@@ -370,3 +370,10 @@ If the build fails:
 - Review and fix compilation errors
 - Check library dependencies in `arduino-libraries.txt`
 - Verify Arduino code syntax and ESP32 compatibility
+
+## Active Technologies
+- C++ (Arduino framework for ESP32, ESP-IDF v2.0.x via arduino-cli) + LVGL@8.4.0 (display widgets), lv_font_montserrat_48/32/14 (text rendering), existing PowerScreen class (001-power-screen-enhancements)
+- No NVS required (no user configuration - color/icon settings are compile-time constants) (001-power-screen-enhancements)
+
+## Recent Changes
+- 001-power-screen-enhancements: Added C++ (Arduino framework for ESP32, ESP-IDF v2.0.x via arduino-cli) + LVGL@8.4.0 (display widgets), lv_font_montserrat_48/32/14 (text rendering), existing PowerScreen class

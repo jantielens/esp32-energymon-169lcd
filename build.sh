@@ -70,6 +70,16 @@ build_board() {
     echo ""
 }
 
+# Generate icons from PNG files
+if [[ -d "$SCRIPT_DIR/assets/icons" ]] && [[ -f "$SCRIPT_DIR/tools/png2icons.py" ]]; then
+    echo "Generating icons from PNG files..."
+    python3 "$SCRIPT_DIR/tools/png2icons.py" \
+        "$SCRIPT_DIR/assets/icons" \
+        "$SCRIPT_DIR/src/app/icons.c" \
+        "$SCRIPT_DIR/src/app/icons.h"
+    echo ""
+fi
+
 # Generate web assets (once for all builds)
 echo "Generating web assets..."
 "$SCRIPT_DIR/tools/minify-web-assets.sh" "$PROJECT_NAME" "$PROJECT_DISPLAY_NAME"

@@ -98,9 +98,10 @@ void lcd_init() {
     delay(120);
 
     // ST7789V2 init sequence (from Waveshare sample)
-    // Keep panel in portrait mode, LVGL will handle rotation in software
+    // BGR mode (manufacturer default) - display_manager.cpp swaps RGB→BGR in flush callback
+    // This allows LVGL to blend colors correctly in RGB space, fixing anti-aliasing artifacts
     lcd_write_command(0x36);
-    lcd_write_data(0x00);  // Always portrait, software rotation used
+    lcd_write_data(0x00);  // BGR mode (bit 3 = 0), portrait orientation
 
     lcd_write_command(0x3A);
     lcd_write_data(0x05);
