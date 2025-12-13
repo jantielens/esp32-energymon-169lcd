@@ -13,6 +13,7 @@
 #include "web_assets.h"
 #include "config_manager.h"
 #include "log_manager.h"
+#include "lcd_driver.h"
 #include "../version.h"
 #include <ESPAsyncWebServer.h>
 #include <DNSServer.h>
@@ -40,6 +41,8 @@ void handleGetMode(AsyncWebServerRequest *request);
 void handleGetHealth(AsyncWebServerRequest *request);
 void handleReboot(AsyncWebServerRequest *request);
 void handleOTAUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final);
+void handleGetBrightness(AsyncWebServerRequest *request);
+void handlePostBrightness(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total);
 
 // Web server on port 80 (pointer to avoid constructor issues)
 AsyncWebServer *server = nullptr;
@@ -57,6 +60,9 @@ static DeviceConfig *current_config = nullptr;
 static bool ota_in_progress = false;
 static size_t ota_progress = 0;
 static size_t ota_total = 0;
+
+// LCD brightness (current runtime value, may differ from saved)
+static uint8_t current_brightness = 100;
 
 // CPU usage tracking
 static uint32_t last_idle_runtime = 0;
@@ -184,6 +190,9 @@ void handleGetConfig(AsyncWebServerRequest *request) {
     doc["mqtt_topic_solar"] = current_config->mqtt_topic_solar;
     doc["mqtt_topic_grid"] = current_config->mqtt_topic_grid;
     
+    // LCD settings
+    doc["lcd_brightness"] = current_config->lcd_brightness;
+    
     String response;
     serializeJson(doc, response);
     
@@ -276,6 +285,17 @@ void handlePostConfig(AsyncWebServerRequest *request, uint8_t *data, size_t len,
     }
     if (doc.containsKey("mqtt_topic_grid")) {
         strlcpy(current_config->mqtt_topic_grid, doc["mqtt_topic_grid"] | "", CONFIG_MQTT_TOPIC_MAX_LEN);
+    }
+    
+    // LCD brightness - update both config and runtime, apply to hardware
+    if (doc.containsKey("lcd_brightness")) {
+        int brightness = doc["lcd_brightness"] | 100;
+        if (brightness < 0) brightness = 0;
+        if (brightness > 100) brightness = 100;
+        current_config->lcd_brightness = (uint8_t)brightness;
+        current_brightness = (uint8_t)brightness;
+        lcd_set_backlight(current_brightness);
+        Logger.logMessagef("Portal", "Brightness saved: %d%%", current_brightness);
     }
     
     current_config->magic = CONFIG_MAGIC;
@@ -587,6 +607,56 @@ void handleOTAUpload(AsyncWebServerRequest *request, String filename, size_t ind
     }
 }
 
+// GET /api/brightness - Return current brightness
+void handleGetBrightness(AsyncWebServerRequest *request) {
+    JsonDocument doc;
+    doc["brightness"] = current_brightness;
+    
+    String response;
+    serializeJson(doc, response);
+    
+    request->send(200, "application/json", response);
+}
+
+// POST /api/brightness - Update brightness in real-time (not persisted)
+void handlePostBrightness(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+    // Parse JSON body
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, data, len);
+    
+    if (error) {
+        Logger.logMessagef("Portal", "Brightness JSON parse error: %s", error.c_str());
+        request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+        return;
+    }
+    
+    // Validate brightness field exists
+    if (!doc.containsKey("brightness")) {
+        request->send(400, "application/json", "{\"error\":\"Missing brightness field\"}");
+        return;
+    }
+    
+    // Get brightness value and clamp to 0-100 range
+    int brightness = doc["brightness"];
+    if (brightness < 0) brightness = 0;
+    if (brightness > 100) brightness = 100;
+    
+    // Update runtime brightness and apply to hardware
+    current_brightness = (uint8_t)brightness;
+    lcd_set_backlight(current_brightness);
+    
+    Logger.logMessagef("Portal", "Brightness set to %d%%", current_brightness);
+    
+    // Return success with current value
+    JsonDocument response_doc;
+    response_doc["brightness"] = current_brightness;
+    
+    String response;
+    serializeJson(response_doc, response);
+    
+    request->send(200, "application/json", response);
+}
+
 // ===== PUBLIC API =====
 
 // Initialize web portal
@@ -594,6 +664,14 @@ void web_portal_init(DeviceConfig *config) {
     Logger.logBegin("Portal Init");
     
     current_config = config;
+    
+    // Initialize current brightness from config (or default 100%)
+    if (config && config->magic == CONFIG_MAGIC) {
+        current_brightness = config->lcd_brightness;
+    } else {
+        current_brightness = 100;
+    }
+    Logger.logMessagef("Portal", "Initial brightness: %d%%", current_brightness);
     
     // Create web server instance (avoid global constructor issues)
     if (server == nullptr) {
@@ -630,6 +708,15 @@ void web_portal_init(DeviceConfig *config) {
     server->on("/api/info", HTTP_GET, handleGetVersion);
     server->on("/api/health", HTTP_GET, handleGetHealth);
     server->on("/api/reboot", HTTP_POST, handleReboot);
+    
+    // Brightness control endpoints
+    server->on("/api/brightness", HTTP_GET, handleGetBrightness);
+    
+    server->on("/api/brightness", HTTP_POST,
+        [](AsyncWebServerRequest *request) {},
+        NULL,
+        handlePostBrightness
+    );
     
     // OTA upload endpoint
     server->on("/api/update", HTTP_POST,

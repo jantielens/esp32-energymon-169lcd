@@ -11,6 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0] - 2025-12-13
+
+### Added
+- **LCD Brightness Control**: User-configurable backlight brightness (0-100%)
+  - Real-time adjustment via slider on web portal home page
+  - Immediate hardware feedback with <100ms response time
+  - Brightness persistence across device reboots via NVS storage
+  - REST API endpoints: GET/POST `/api/brightness` for programmatic control
+  - Brightness included in `/api/config` for configuration management
+  - Default brightness: 100% (maximum) for backward compatibility
+
+---
+
 ## [1.0.0] - 2025-12-13
 
 ### Added

@@ -467,6 +467,17 @@ async function loadConfig() {
         setValueIfExists('mqtt_topic_solar', config.mqtt_topic_solar);
         setValueIfExists('mqtt_topic_grid', config.mqtt_topic_grid);
         
+        // LCD brightness - use config value (saved brightness)
+        // This shows the persisted value, not necessarily the current runtime value
+        const brightnessSlider = document.getElementById('lcd_brightness');
+        const brightnessValue = document.getElementById('lcd_brightness_value');
+        if (brightnessSlider && config.lcd_brightness !== undefined) {
+            brightnessSlider.value = config.lcd_brightness;
+            if (brightnessValue) {
+                brightnessValue.textContent = config.lcd_brightness;
+            }
+        }
+        
         // Hide loading overlay (silent load)
         const overlay = document.getElementById('form-loading-overlay');
         if (overlay) overlay.style.display = 'none';
@@ -496,11 +507,18 @@ function extractFormFields(formData) {
     const fields = ['wifi_ssid', 'wifi_password', 'device_name', 'fixed_ip', 
                     'subnet_mask', 'gateway', 'dns1', 'dns2', 'dummy_setting',
                     'mqtt_broker', 'mqtt_port', 'mqtt_username', 'mqtt_password',
-                    'mqtt_topic_solar', 'mqtt_topic_grid'];
+                    'mqtt_topic_solar', 'mqtt_topic_grid', 'lcd_brightness'];
     
     fields.forEach(field => {
         const value = getFieldValue(field);
-        if (value !== null) config[field] = value;
+        if (value !== null) {
+            // Convert numeric fields from string to number
+            if (field === 'mqtt_port' || field === 'lcd_brightness') {
+                config[field] = parseInt(value, 10);
+            } else {
+                config[field] = value;
+            }
+        }
     });
     
     return config;
@@ -919,6 +937,35 @@ document.addEventListener('DOMContentLoaded', () => {
     const deviceName = document.getElementById('device_name');
     if (deviceName) {
         deviceName.addEventListener('input', updateSanitizedName);
+    }
+    
+    // LCD brightness slider - real-time updates (no save until button clicked)
+    const brightnessSlider = document.getElementById('lcd_brightness');
+    if (brightnessSlider) {
+        brightnessSlider.addEventListener('input', async (event) => {
+            const brightness = parseInt(event.target.value);
+            
+            // Update value display
+            const valueDisplay = document.getElementById('lcd_brightness_value');
+            if (valueDisplay) {
+                valueDisplay.textContent = brightness;
+            }
+            
+            // Send real-time update to device
+            try {
+                const response = await fetch('/api/brightness', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ brightness: brightness })
+                });
+                
+                if (!response.ok) {
+                    console.error('Failed to update brightness:', response.statusText);
+                }
+            } catch (error) {
+                console.error('Error updating brightness:', error);
+            }
+        });
     }
     
     // Add focus handlers for all inputs to prevent keyboard from covering them

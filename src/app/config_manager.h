@@ -58,6 +58,9 @@ struct DeviceConfig {
     char mqtt_topic_solar[CONFIG_MQTT_TOPIC_MAX_LEN];
     char mqtt_topic_grid[CONFIG_MQTT_TOPIC_MAX_LEN];
     
+    // LCD settings
+    uint8_t lcd_brightness;  // 0-100%, default 100
+    
     // Validation flag (magic number to detect valid config)
     uint32_t magic;
 };
