@@ -31,9 +31,9 @@ void SplashScreen::create() {
     spinner = lv_spinner_create(screen_obj, 1000, 60);
     lv_obj_set_size(spinner, 60, 60);
     lv_obj_align(spinner, LV_ALIGN_CENTER, 0, -10);
-    lv_obj_set_style_arc_color(spinner, lv_color_hex(0x00ADB5), LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(spinner, lv_color_hex(0xB5AD00), LV_PART_INDICATOR);  // BGR for cyan 0x00ADB5
     lv_obj_set_style_arc_width(spinner, 6, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_color(spinner, lv_color_hex(0x333333), LV_PART_MAIN);
+    lv_obj_set_style_arc_color(spinner, lv_color_hex(0x333333), LV_PART_MAIN);  // Dark gray (unaffected)
     lv_obj_set_style_arc_width(spinner, 6, LV_PART_MAIN);
     
     // Progress percentage below spinner

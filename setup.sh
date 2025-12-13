@@ -60,6 +60,14 @@ else
     echo "Warning: $LIBRARIES_FILE not found. No additional libraries will be installed."
 fi
 
+# Install Python dependencies for build tools (PNG icon conversion)
+if command -v python3 &> /dev/null; then
+    echo "Installing Python dependencies for icon generation..."
+    python3 -m pip install --user Pillow || echo "Warning: Failed to install Pillow. PNG icon generation may not work."
+else
+    echo "Warning: python3 not found. PNG icon generation will not work."
+fi
+
 echo ""
 echo "=== Setup Complete ==="
 echo "ESP32 development environment is ready!"

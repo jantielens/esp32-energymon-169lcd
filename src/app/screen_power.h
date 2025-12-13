@@ -41,6 +41,9 @@ private:
     lv_obj_t* solar_unit = nullptr;
     lv_obj_t* home_unit = nullptr;
     lv_obj_t* grid_unit = nullptr;
+    lv_obj_t* solar_bar = nullptr;
+    lv_obj_t* home_bar = nullptr;
+    lv_obj_t* grid_bar = nullptr;
     
     // Current values
     float solar_kw = NAN;
@@ -48,6 +51,15 @@ private:
     
     // Helper to update calculated home value
     void update_home_value();
+    
+    // NEW: Color calculation helpers
+    lv_color_t get_grid_color(float kw);
+    lv_color_t get_home_color(float kw);
+    lv_color_t get_solar_color(float kw);
+    
+    // NEW: Widget update helpers
+    void update_power_colors();
+    void update_bar_charts();
 };
 
 #endif // SCREEN_POWER_H
