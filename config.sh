@@ -27,8 +27,8 @@
 #   - REST API /api/info response (both values included)
 #   Example: "ESP32 Template"
 #
-PROJECT_NAME="esp32-template"
-PROJECT_DISPLAY_NAME="ESP32 Template"
+PROJECT_NAME="esp32-energymon"
+PROJECT_DISPLAY_NAME="ESP32 Energy Monitor"
 
 # Board configuration (FQBN - Fully Qualified Board Name)
 # Define target boards as an associative array: [FQBN]="board-name"
