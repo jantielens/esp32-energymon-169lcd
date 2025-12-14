@@ -20,4 +20,8 @@ void display_show_power_screen();
 // Update power values on power screen
 void display_update_energy(float solar_kw, float grid_kw);
 
+// Image display API (10-second timeout, auto-return to power screen)
+bool display_show_image(const uint8_t* jpeg_data, size_t jpeg_size);
+void display_hide_image();  // Manual dismiss (also called automatically after timeout)
+
 #endif // DISPLAY_MANAGER_H

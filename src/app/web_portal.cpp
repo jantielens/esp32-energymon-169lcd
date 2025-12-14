@@ -14,6 +14,7 @@
 #include "config_manager.h"
 #include "log_manager.h"
 #include "lcd_driver.h"
+#include "display_manager.h"
 #include "../version.h"
 #include <ESPAsyncWebServer.h>
 #include <DNSServer.h>
@@ -43,6 +44,8 @@ void handleReboot(AsyncWebServerRequest *request);
 void handleOTAUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final);
 void handleGetBrightness(AsyncWebServerRequest *request);
 void handlePostBrightness(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total);
+void handleImageUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final);
+void handleImageDelete(AsyncWebServerRequest *request);
 
 // Web server on port 80 (pointer to avoid constructor issues)
 AsyncWebServer *server = nullptr;
@@ -63,6 +66,11 @@ static size_t ota_total = 0;
 
 // LCD brightness (current runtime value, may differ from saved)
 static uint8_t current_brightness = 100;
+
+// Image upload buffer (allocated temporarily during upload)
+static uint8_t* image_upload_buffer = nullptr;
+static size_t image_upload_size = 0;
+static const size_t MAX_IMAGE_SIZE = 100 * 1024;  // 100KB limit
 
 // CPU usage tracking
 static uint32_t last_idle_runtime = 0;
@@ -772,6 +780,123 @@ void handlePostBrightness(AsyncWebServerRequest *request, uint8_t *data, size_t 
     request->send(200, "application/json", response);
 }
 
+// POST /api/display/image - Upload and display JPEG image
+void handleImageUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
+    // First chunk - initialize upload
+    if (index == 0) {
+        Logger.logBegin("Image Upload");
+        Logger.logLinef("Filename: %s", filename.c_str());
+        Logger.logLinef("Total size: %u bytes", request->contentLength());
+        Logger.logLinef("Free heap: %u bytes", ESP.getFreeHeap());
+        
+        // Check file size
+        size_t total_size = request->contentLength();
+        if (total_size > MAX_IMAGE_SIZE) {
+            Logger.logEnd("ERROR: Image too large");
+            request->send(400, "application/json", "{\"success\":false,\"message\":\"Image too large (max 100KB)\"}");
+            return;
+        }
+        
+        // Check available memory
+        if (ESP.getFreeHeap() < total_size + 50000) {  // Need extra headroom for decoding
+            Logger.logEnd("ERROR: Insufficient memory");
+            request->send(507, "application/json", "{\"success\":false,\"message\":\"Insufficient memory\"}");
+            return;
+        }
+        
+        // Allocate buffer
+        image_upload_buffer = (uint8_t*)malloc(total_size);
+        if (!image_upload_buffer) {
+            Logger.logEnd("ERROR: Memory allocation failed");
+            request->send(507, "application/json", "{\"success\":false,\"message\":\"Memory allocation failed\"}");
+            return;
+        }
+        
+        image_upload_size = 0;
+        Logger.logMessage("Upload", "Buffer allocated");
+    }
+    
+    // Receive data chunks
+    if (len && image_upload_buffer) {
+        memcpy(image_upload_buffer + image_upload_size, data, len);
+        image_upload_size += len;
+        
+        // Log progress every 10KB
+        static size_t last_logged_size = 0;
+        if (image_upload_size - last_logged_size >= 10240) {
+            Logger.logLinef("Received: %u bytes", image_upload_size);
+            last_logged_size = image_upload_size;
+        }
+    }
+    
+    // Final chunk - display image
+    if (final) {
+        if (image_upload_buffer && image_upload_size > 0) {
+            Logger.logLinef("Upload complete: %u bytes", image_upload_size);
+            
+            // Validate JPEG or SJPG magic bytes
+            // JPEG: FF D8 FF
+            // SJPG: _SJP (5F 53 4A 50)
+            bool is_jpeg = false;
+            bool is_sjpg = false;
+            
+            if (image_upload_size >= 3 && 
+                image_upload_buffer[0] == 0xFF && 
+                image_upload_buffer[1] == 0xD8 && 
+                image_upload_buffer[2] == 0xFF) {
+                is_jpeg = true;
+                Logger.logMessage("Upload", "Detected JPEG format");
+            } else if (image_upload_size >= 4 &&
+                       image_upload_buffer[0] == '_' &&
+                       image_upload_buffer[1] == 'S' &&
+                       image_upload_buffer[2] == 'J' &&
+                       image_upload_buffer[3] == 'P') {
+                is_sjpg = true;
+                Logger.logMessage("Upload", "Detected SJPG format");
+            }
+            
+            if (!is_jpeg && !is_sjpg) {
+                Logger.logLinef("Invalid header: %02X %02X %02X %02X", 
+                    image_upload_buffer[0], image_upload_buffer[1], 
+                    image_upload_buffer[2], image_upload_buffer[3]);
+                Logger.logEnd("ERROR: Not a valid JPEG or SJPG file");
+                free(image_upload_buffer);
+                image_upload_buffer = nullptr;
+                image_upload_size = 0;
+                request->send(400, "application/json", "{\"success\":false,\"message\":\"Invalid JPEG/SJPG file\"}");
+                return;
+            }
+            
+            // Display image
+            bool success = display_show_image(image_upload_buffer, image_upload_size);
+            
+            // Note: Don't free buffer yet - display_show_image() makes a copy
+            // The image screen will manage its own buffer
+            free(image_upload_buffer);
+            image_upload_buffer = nullptr;
+            image_upload_size = 0;
+            
+            if (success) {
+                Logger.logEnd("Image displayed successfully (10s timeout)");
+                request->send(200, "application/json", "{\"success\":true,\"message\":\"Image displayed (10s timeout)\"}");
+            } else {
+                Logger.logEnd("ERROR: Failed to display image");
+                request->send(500, "application/json", "{\"success\":false,\"message\":\"Failed to display image\"}");
+            }
+        } else {
+            Logger.logEnd("ERROR: No data received");
+            request->send(400, "application/json", "{\"success\":false,\"message\":\"No data received\"}");
+        }
+    }
+}
+
+// DELETE /api/display/image - Manually dismiss image and return to power screen
+void handleImageDelete(AsyncWebServerRequest *request) {
+    Logger.logMessage("Portal", "Image dismiss requested");
+    display_hide_image();
+    request->send(200, "application/json", "{\"success\":true,\"message\":\"Image dismissed\"}");
+}
+
 // ===== PUBLIC API =====
 
 // Initialize web portal
@@ -838,6 +963,14 @@ void web_portal_init(DeviceConfig *config) {
         [](AsyncWebServerRequest *request) {},
         handleOTAUpload
     );
+    
+    // Image display endpoints
+    server->on("/api/display/image", HTTP_POST,
+        [](AsyncWebServerRequest *request) {},
+        handleImageUpload
+    );
+    
+    server->on("/api/display/image", HTTP_DELETE, handleImageDelete);
     
     // 404 handler
     server->onNotFound([](AsyncWebServerRequest *request) {

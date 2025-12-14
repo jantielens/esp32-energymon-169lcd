@@ -2,6 +2,7 @@
 #include "lcd_driver.h"
 #include "screen_splash.h"
 #include "screen_power.h"
+#include "screen_image.h"
 #include <math.h>
 
 static lv_disp_draw_buf_t draw_buf;
@@ -12,7 +13,9 @@ static lv_disp_drv_t disp_drv;
 // Screen instances
 static SplashScreen* splash_screen = nullptr;
 static PowerScreen* power_screen = nullptr;
+static ImageScreen* image_screen = nullptr;
 static ScreenBase* current_screen = nullptr;
+static ScreenBase* previous_screen = nullptr;  // Track previous screen for return after image timeout
 
 // FPS counter - Set to 1 to enable, 0 to disable
 #define ENABLE_FPS_COUNTER 0
@@ -56,6 +59,9 @@ void display_init() {
     lcd_init();
 
     lv_init();
+    
+    // Initialize SJPG decoder for image display API
+    lv_split_jpeg_init();
 
     lv_disp_draw_buf_init(&draw_buf, buf1, buf2, LCD_WIDTH * 20);  // Double buffering
 
@@ -108,6 +114,11 @@ void display_update() {
     
     if (current_screen) {
         current_screen->update();
+    }
+    
+    // Check image screen timeout (10 seconds)
+    if (image_screen && current_screen == image_screen && image_screen->is_timeout_expired()) {
+        display_hide_image();
     }
 }
 
@@ -177,4 +188,45 @@ void display_update_fps() {
         fps_frame_count = 0;
         fps_last_time = current_time;
     }
+}
+
+bool display_show_image(const uint8_t* jpeg_data, size_t jpeg_size) {
+    // Create image screen on first use
+    if (!image_screen) {
+        image_screen = new ImageScreen();
+        image_screen->create();
+    }
+    
+    // Load image data (this will decode it immediately)
+    if (!image_screen->load_image(jpeg_data, jpeg_size)) {
+        return false;
+    }
+    
+    // Save current screen for return after timeout
+    previous_screen = current_screen;
+    
+    // Show image screen (image is already decoded)
+    image_screen->show();
+    current_screen = image_screen;
+    
+    return true;
+}
+
+void display_hide_image() {
+    if (image_screen) {
+        image_screen->hide();
+        image_screen->clear_image();
+    }
+    
+    // Return to previous screen (or power screen if no previous)
+    if (previous_screen) {
+        previous_screen->show();
+        current_screen = previous_screen;
+        previous_screen = nullptr;
+    } else if (power_screen) {
+        display_show_power_screen();
+    }
+    
+    // Force update
+    lv_timer_handler();
 }
