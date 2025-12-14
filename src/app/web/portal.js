@@ -452,9 +452,6 @@ async function loadConfig() {
         setValueIfExists('dns1', config.dns1);
         setValueIfExists('dns2', config.dns2);
         
-        // Dummy setting
-        setValueIfExists('dummy_setting', config.dummy_setting);
-        
         // MQTT settings
         setValueIfExists('mqtt_broker', config.mqtt_broker);
         setValueIfExists('mqtt_port', config.mqtt_port || 1883);
@@ -466,6 +463,8 @@ async function loadConfig() {
         }
         setValueIfExists('mqtt_topic_solar', config.mqtt_topic_solar);
         setValueIfExists('mqtt_topic_grid', config.mqtt_topic_grid);
+        setValueIfExists('mqtt_solar_value_path', config.mqtt_solar_value_path);
+        setValueIfExists('mqtt_grid_value_path', config.mqtt_grid_value_path);
         
         // LCD brightness - use config value (saved brightness)
         // This shows the persisted value, not necessarily the current runtime value
@@ -530,9 +529,11 @@ function extractFormFields(formData) {
     // Build config from only the fields that exist on this page
     const config = {};
     const fields = ['wifi_ssid', 'wifi_password', 'device_name', 'fixed_ip', 
-                    'subnet_mask', 'gateway', 'dns1', 'dns2', 'dummy_setting',
+                    'subnet_mask', 'gateway', 'dns1', 'dns2',
                     'mqtt_broker', 'mqtt_port', 'mqtt_username', 'mqtt_password',
-                    'mqtt_topic_solar', 'mqtt_topic_grid', 'lcd_brightness',
+                    'mqtt_topic_solar', 'mqtt_topic_grid', 
+                    'mqtt_solar_value_path', 'mqtt_grid_value_path',
+                    'lcd_brightness',
                     'grid_threshold_0', 'grid_threshold_1', 'grid_threshold_2',
                     'home_threshold_0', 'home_threshold_1', 'home_threshold_2',
                     'solar_threshold_0', 'solar_threshold_1', 'solar_threshold_2',
@@ -1048,59 +1049,6 @@ function updateThresholdRanges(type) {
 }
 
 /**
- * Restore factory defaults for thresholds and colors
- */
-async function restoreDefaults() {
-    if (!confirm('Restore all thresholds and colors to factory defaults?')) {
-        return;
-    }
-    
-    // Factory defaults
-    const defaults = {
-        grid_threshold_0: 0.0,
-        grid_threshold_1: 0.5,
-        grid_threshold_2: 2.5,
-        home_threshold_0: 0.5,
-        home_threshold_1: 1.0,
-        home_threshold_2: 2.0,
-        solar_threshold_0: 0.5,
-        solar_threshold_1: 1.5,
-        solar_threshold_2: 3.0,
-        color_good: '#00FF00',
-        color_ok: '#FFFFFF',
-        color_attention: '#FFA500',
-        color_warning: '#FF0000'
-    };
-    
-    try {
-        showMessage('Restoring defaults...', 'info');
-        
-        // Save defaults (no_reboot so changes apply immediately)
-        const response = await fetch(API_CONFIG + '?no_reboot=1', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(defaults)
-        });
-        
-        if (!response.ok) {
-            throw new Error('Failed to restore defaults');
-        }
-        
-        const result = await response.json();
-        if (result.success) {
-            // Reload the page to show new values
-            await loadConfig();
-            showMessage('Factory defaults restored successfully!', 'success');
-        } else {
-            showMessage('Failed to restore defaults', 'error');
-        }
-    } catch (error) {
-        showMessage('Error restoring defaults: ' + error.message, 'error');
-        console.error('Restore error:', error);
-    }
-}
-
-/**
  * Initialize page on DOM ready
  */
 document.addEventListener('DOMContentLoaded', () => {
@@ -1141,11 +1089,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const deviceName = document.getElementById('device_name');
     if (deviceName) {
         deviceName.addEventListener('input', updateSanitizedName);
-    }
-    
-    const restoreDefaultsBtn = document.getElementById('restore-defaults-btn');
-    if (restoreDefaultsBtn) {
-        restoreDefaultsBtn.addEventListener('click', restoreDefaults);
     }
     
     // Color picker event listeners - update dots in real-time

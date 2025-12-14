@@ -4,20 +4,38 @@ Guide to integrating the ESP32 Energy Monitor with MQTT brokers and Home Assista
 
 ## MQTT Topic Format
 
-The device subscribes to two topics for power data:
+The device subscribes to two topics for power data. Message format is configurable.
+
+### Message Format Options
+
+You can configure how values are extracted from MQTT messages:
+
+**Direct Numeric Value** (default):
+- **Value Path**: `.` (dot)
+- **Message Format**: Plain number in kilowatts (kW)
+- **Example**: `2.5` → extracts 2.5 kW
+- **Use case**: Simple power sensors, direct values
+
+**JSON Field Extraction**:
+- **Value Path**: Field name (e.g., `value`, `power`, `state`)
+- **Message Format**: JSON object with specified field in kilowatts (kW)
+- **Example**: `{"value": 1.2, "unit": "kW"}` with path `value` → extracts 1.2 kW
+- **Use case**: Complex sensors, Home Assistant JSON sensors
 
 ### Solar Power Topic
 
-- **Format**: Plain float value in kilowatts (kW)
+- **Default format**: Direct numeric value (value path: `.`)
 - **Example topic**: `home/solar/power`
 - **Example message**: `2.5` (= 2.5 kW)
 - **Update rate**: Recommended ≥ 1 Hz for smooth display
 
 ### Grid Power Topic
 
-- **Format**: JSON object with `value` field in kilowatts (kW)
+- **Default format**: Direct numeric value (value path: `.`)
 - **Example topic**: `home/grid/power`
-- **Example message**: `{"value": 1.2}` (= 1.2 kW)
+- **Example message**: `1.2` (= 1.2 kW)
+- **Alternative**: JSON format with value path: `value`
+  - **Example message**: `{"value": 1.2}` (= 1.2 kW)
 - **Update rate**: Recommended ≥ 1 Hz for smooth display
 
 ### Home Power (Calculated)
@@ -32,10 +50,14 @@ The device subscribes to two topics for power data:
 
 ### Example Configuration
 
+#### Option 1: Direct Numeric Values (Recommended)
+
+Simplest configuration using direct values (ESP32 value path: `.`):
+
 Add to `configuration.yaml`:
 
 ```yaml
-# Solar Power Sensor
+# Solar Power Sensor (direct value)
 mqtt:
   sensor:
     - name: "Solar Power"
@@ -44,13 +66,34 @@ mqtt:
       device_class: power
       state_class: measurement
       
-    - name: "Grid Power"  
+    - name: "Grid Power" (direct value)
+      state_topic: "home/grid/power"
+      unit_of_measurement: "kW"
+      device_class: power
+      state_class: measurement
+```
+
+**ESP32 Configuration**:
+- Solar Value Path: `.`
+- Grid Value Path: `.`
+
+#### Option 2: JSON Format
+
+If your sensors publish JSON (ESP32 grid value path: `value`):
+
+```yaml
+mqtt:
+  sensor:
+    - name: "Grid Power"
       state_topic: "home/grid/power"
       unit_of_measurement: "kW"
       device_class: power
       state_class: measurement
       value_template: "{{ value_json.value }}"
 ```
+
+**ESP32 Configuration**:
+- Grid Value Path: `value`
 
 ### Publishing from Home Assistant
 

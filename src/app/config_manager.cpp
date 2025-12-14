@@ -22,13 +22,14 @@
 #define KEY_GATEWAY        "gateway"
 #define KEY_DNS1           "dns1"
 #define KEY_DNS2           "dns2"
-#define KEY_DUMMY          "dummy"
 #define KEY_MQTT_BROKER    "mqtt_broker"
 #define KEY_MQTT_PORT      "mqtt_port"
 #define KEY_MQTT_USER      "mqtt_user"
 #define KEY_MQTT_PASS      "mqtt_pass"
 #define KEY_MQTT_SOLAR     "mqtt_solar"
 #define KEY_MQTT_GRID      "mqtt_grid"
+#define KEY_MQTT_SOLAR_PATH "mqtt_sol_p"
+#define KEY_MQTT_GRID_PATH  "mqtt_grd_p"
 #define KEY_LCD_BRIGHTNESS "lcd_bright"
 #define KEY_GRID_T0        "grid_t0"
 #define KEY_GRID_T1        "grid_t1"
@@ -104,13 +105,40 @@ bool config_manager_load(DeviceConfig *config) {
     
     Logger.logBegin("Config Load");
     
+    // Set all defaults first (used if no config exists or as fallbacks)
+    String default_name = config_manager_get_default_device_name();
+    strlcpy(config->device_name, default_name.c_str(), CONFIG_DEVICE_NAME_MAX_LEN);
+    config->mqtt_port = 1883;
+    config->lcd_brightness = 100;
+    strlcpy(config->mqtt_solar_value_path, ".", sizeof(config->mqtt_solar_value_path));
+    strlcpy(config->mqtt_grid_value_path, ".", sizeof(config->mqtt_grid_value_path));
+    
+    // Power threshold defaults
+    config->grid_threshold[0] = 0.0f;
+    config->grid_threshold[1] = 0.5f;
+    config->grid_threshold[2] = 2.5f;
+    config->home_threshold[0] = 0.5f;
+    config->home_threshold[1] = 1.0f;
+    config->home_threshold[2] = 2.0f;
+    config->solar_threshold[0] = 0.5f;
+    config->solar_threshold[1] = 1.5f;
+    config->solar_threshold[2] = 3.0f;
+    
+    // Color defaults
+    config->color_good = 0x00FF00;
+    config->color_ok = 0xFFFFFF;
+    config->color_attention = 0xFFA500;
+    config->color_warning = 0xFF0000;
+    
+    config->magic = CONFIG_MAGIC;
+    
     preferences.begin(CONFIG_NAMESPACE, true); // Read-only mode
     
     // Check magic number first
     uint32_t magic = preferences.getUInt(KEY_MAGIC, 0);
     if (magic != CONFIG_MAGIC) {
         preferences.end();
-        Logger.logEnd("No config found");
+        Logger.logEnd("No config found - defaults applied");
         return false;
     }
     
@@ -118,11 +146,11 @@ bool config_manager_load(DeviceConfig *config) {
     preferences.getString(KEY_WIFI_SSID, config->wifi_ssid, CONFIG_SSID_MAX_LEN);
     preferences.getString(KEY_WIFI_PASS, config->wifi_password, CONFIG_PASSWORD_MAX_LEN);
     
-    // Load device settings
-    String default_name = config_manager_get_default_device_name();
+    // Load device settings (use default if empty)
     preferences.getString(KEY_DEVICE_NAME, config->device_name, CONFIG_DEVICE_NAME_MAX_LEN);
     if (strlen(config->device_name) == 0) {
-        strlcpy(config->device_name, default_name.c_str(), CONFIG_DEVICE_NAME_MAX_LEN);
+        String fallback_name = config_manager_get_default_device_name();
+        strlcpy(config->device_name, fallback_name.c_str(), CONFIG_DEVICE_NAME_MAX_LEN);
     }
     
     // Load fixed IP settings
@@ -132,9 +160,6 @@ bool config_manager_load(DeviceConfig *config) {
     preferences.getString(KEY_DNS1, config->dns1, CONFIG_IP_STR_MAX_LEN);
     preferences.getString(KEY_DNS2, config->dns2, CONFIG_IP_STR_MAX_LEN);
     
-    // Load dummy setting
-    preferences.getString(KEY_DUMMY, config->dummy_setting, CONFIG_DUMMY_MAX_LEN);
-    
     // Load MQTT settings
     preferences.getString(KEY_MQTT_BROKER, config->mqtt_broker, CONFIG_MQTT_BROKER_MAX_LEN);
     config->mqtt_port = preferences.getUShort(KEY_MQTT_PORT, 1883);
@@ -142,6 +167,16 @@ bool config_manager_load(DeviceConfig *config) {
     preferences.getString(KEY_MQTT_PASS, config->mqtt_password, CONFIG_MQTT_PASSWORD_MAX_LEN);
     preferences.getString(KEY_MQTT_SOLAR, config->mqtt_topic_solar, CONFIG_MQTT_TOPIC_MAX_LEN);
     preferences.getString(KEY_MQTT_GRID, config->mqtt_topic_grid, CONFIG_MQTT_TOPIC_MAX_LEN);
+    preferences.getString(KEY_MQTT_SOLAR_PATH, config->mqtt_solar_value_path, sizeof(config->mqtt_solar_value_path));
+    preferences.getString(KEY_MQTT_GRID_PATH, config->mqtt_grid_value_path, sizeof(config->mqtt_grid_value_path));
+    
+    // Set defaults for value paths if empty (both default to "." for direct numeric values)
+    if (strlen(config->mqtt_solar_value_path) == 0) {
+        strlcpy(config->mqtt_solar_value_path, ".", sizeof(config->mqtt_solar_value_path));
+    }
+    if (strlen(config->mqtt_grid_value_path) == 0) {
+        strlcpy(config->mqtt_grid_value_path, ".", sizeof(config->mqtt_grid_value_path));
+    }
     
     // Load LCD settings
     config->lcd_brightness = preferences.getUChar(KEY_LCD_BRIGHTNESS, 100);
@@ -208,9 +243,6 @@ bool config_manager_save(const DeviceConfig *config) {
     preferences.putString(KEY_DNS1, config->dns1);
     preferences.putString(KEY_DNS2, config->dns2);
     
-    // Save dummy setting
-    preferences.putString(KEY_DUMMY, config->dummy_setting);
-    
     // Save MQTT settings
     preferences.putString(KEY_MQTT_BROKER, config->mqtt_broker);
     preferences.putUShort(KEY_MQTT_PORT, config->mqtt_port);
@@ -218,6 +250,12 @@ bool config_manager_save(const DeviceConfig *config) {
     preferences.putString(KEY_MQTT_PASS, config->mqtt_password);
     preferences.putString(KEY_MQTT_SOLAR, config->mqtt_topic_solar);
     preferences.putString(KEY_MQTT_GRID, config->mqtt_topic_grid);
+    
+    // Normalize empty value paths to "." before saving
+    const char* solar_path = (strlen(config->mqtt_solar_value_path) == 0) ? "." : config->mqtt_solar_value_path;
+    const char* grid_path = (strlen(config->mqtt_grid_value_path) == 0) ? "." : config->mqtt_grid_value_path;
+    preferences.putString(KEY_MQTT_SOLAR_PATH, solar_path);
+    preferences.putString(KEY_MQTT_GRID_PATH, grid_path);
     
     // Save LCD settings
     preferences.putUChar(KEY_LCD_BRIGHTNESS, config->lcd_brightness);
