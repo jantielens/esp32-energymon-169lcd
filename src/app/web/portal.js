@@ -425,7 +425,7 @@ async function loadConfig() {
         // Helper to safely set element value
         const setValueIfExists = (id, value) => {
             const element = document.getElementById(id);
-            if (element) element.value = value || '';
+            if (element) element.value = (value !== null && value !== undefined) ? value : '';
         };
         
         const setTextIfExists = (id, text) => {
@@ -478,6 +478,31 @@ async function loadConfig() {
             }
         }
         
+        // Power thresholds
+        setValueIfExists('grid_threshold_0', config.grid_threshold_0 !== undefined ? config.grid_threshold_0 : 0.0);
+        setValueIfExists('grid_threshold_1', config.grid_threshold_1 !== undefined ? config.grid_threshold_1 : 0.5);
+        setValueIfExists('grid_threshold_2', config.grid_threshold_2 !== undefined ? config.grid_threshold_2 : 2.5);
+        setValueIfExists('home_threshold_0', config.home_threshold_0 !== undefined ? config.home_threshold_0 : 0.5);
+        setValueIfExists('home_threshold_1', config.home_threshold_1 !== undefined ? config.home_threshold_1 : 1.0);
+        setValueIfExists('home_threshold_2', config.home_threshold_2 !== undefined ? config.home_threshold_2 : 2.0);
+        setValueIfExists('solar_threshold_0', config.solar_threshold_0 !== undefined ? config.solar_threshold_0 : 0.5);
+        setValueIfExists('solar_threshold_1', config.solar_threshold_1 !== undefined ? config.solar_threshold_1 : 1.5);
+        setValueIfExists('solar_threshold_2', config.solar_threshold_2 !== undefined ? config.solar_threshold_2 : 3.0);
+        
+        // Color configuration
+        setValueIfExists('color_good', config.color_good || '#00FF00');
+        setValueIfExists('color_ok', config.color_ok || '#FFFFFF');
+        setValueIfExists('color_attention', config.color_attention || '#FFA500');
+        setValueIfExists('color_warning', config.color_warning || '#FF0000');
+        
+        // Update color dots to match loaded colors
+        updateColorDots();
+        
+        // Update threshold range labels
+        updateThresholdRanges('grid');
+        updateThresholdRanges('home');
+        updateThresholdRanges('solar');
+        
         // Hide loading overlay (silent load)
         const overlay = document.getElementById('form-loading-overlay');
         if (overlay) overlay.style.display = 'none';
@@ -507,7 +532,11 @@ function extractFormFields(formData) {
     const fields = ['wifi_ssid', 'wifi_password', 'device_name', 'fixed_ip', 
                     'subnet_mask', 'gateway', 'dns1', 'dns2', 'dummy_setting',
                     'mqtt_broker', 'mqtt_port', 'mqtt_username', 'mqtt_password',
-                    'mqtt_topic_solar', 'mqtt_topic_grid', 'lcd_brightness'];
+                    'mqtt_topic_solar', 'mqtt_topic_grid', 'lcd_brightness',
+                    'grid_threshold_0', 'grid_threshold_1', 'grid_threshold_2',
+                    'home_threshold_0', 'home_threshold_1', 'home_threshold_2',
+                    'solar_threshold_0', 'solar_threshold_1', 'solar_threshold_2',
+                    'color_good', 'color_ok', 'color_attention', 'color_warning'];
     
     fields.forEach(field => {
         const value = getFieldValue(field);
@@ -515,6 +544,9 @@ function extractFormFields(formData) {
             // Convert numeric fields from string to number
             if (field === 'mqtt_port' || field === 'lcd_brightness') {
                 config[field] = parseInt(value, 10);
+            } else if (field.includes('threshold')) {
+                // Threshold fields are floats
+                config[field] = parseFloat(value);
             } else {
                 config[field] = value;
             }
@@ -547,6 +579,44 @@ function validateConfig(config) {
         if (!config.gateway || config.gateway.trim() === '') {
             return { valid: false, message: 'Gateway is required when using fixed IP' };
         }
+    }
+    
+    // Validate power thresholds if they exist
+    if (config.grid_threshold_0 !== undefined) {
+        const result = validateThresholds('Grid', config.grid_threshold_0, config.grid_threshold_1, config.grid_threshold_2, -10.0, 10.0);
+        if (!result.valid) return result;
+    }
+    if (config.home_threshold_0 !== undefined) {
+        const result = validateThresholds('Home', config.home_threshold_0, config.home_threshold_1, config.home_threshold_2, 0.0, 10.0);
+        if (!result.valid) return result;
+    }
+    if (config.solar_threshold_0 !== undefined) {
+        const result = validateThresholds('Solar', config.solar_threshold_0, config.solar_threshold_1, config.solar_threshold_2, 0.0, 10.0);
+        if (!result.valid) return result;
+    }
+    
+    return { valid: true };
+}
+
+/**
+ * Validate threshold values
+ * @param {string} name - Power type name (for error messages)
+ * @param {number} t0 - First threshold
+ * @param {number} t1 - Second threshold
+ * @param {number} t2 - Third threshold
+ * @param {number} min - Minimum allowed value
+ * @param {number} max - Maximum allowed value
+ * @returns {Object} { valid: boolean, message: string }
+ */
+function validateThresholds(name, t0, t1, t2, min, max) {
+    // Check range
+    if (t0 < min || t2 > max) {
+        return { valid: false, message: `${name} thresholds must be between ${min} and ${max} kW` };
+    }
+    
+    // Check ordering
+    if (!(t0 <= t1 && t1 <= t2)) {
+        return { valid: false, message: `${name} thresholds must be in order: T0 ≤ T1 ≤ T2` };
     }
     
     return { valid: true };
@@ -897,6 +967,140 @@ async function uploadFirmware() {
 
 
 /**
+ * Update color dots in threshold UI to match current color picker values
+ */
+function updateColorDots() {
+    const colorGood = document.getElementById('color_good');
+    const colorOk = document.getElementById('color_ok');
+    const colorAttention = document.getElementById('color_attention');
+    const colorWarning = document.getElementById('color_warning');
+    
+    if (!colorGood || !colorOk || !colorAttention || !colorWarning) return;
+    
+    // Update all grid dots
+    const gridDot0 = document.getElementById('grid-dot-0');
+    const gridDot1 = document.getElementById('grid-dot-1');
+    const gridDot2 = document.getElementById('grid-dot-2');
+    const gridDot3 = document.getElementById('grid-dot-3');
+    
+    if (gridDot0) gridDot0.style.backgroundColor = colorGood.value;
+    if (gridDot1) {
+        gridDot1.style.backgroundColor = colorOk.value;
+        gridDot1.style.borderColor = '#999';
+    }
+    if (gridDot2) gridDot2.style.backgroundColor = colorAttention.value;
+    if (gridDot3) gridDot3.style.backgroundColor = colorWarning.value;
+    
+    // Update all home dots
+    const homeDot0 = document.getElementById('home-dot-0');
+    const homeDot1 = document.getElementById('home-dot-1');
+    const homeDot2 = document.getElementById('home-dot-2');
+    const homeDot3 = document.getElementById('home-dot-3');
+    
+    if (homeDot0) homeDot0.style.backgroundColor = colorGood.value;
+    if (homeDot1) {
+        homeDot1.style.backgroundColor = colorOk.value;
+        homeDot1.style.borderColor = '#999';
+    }
+    if (homeDot2) homeDot2.style.backgroundColor = colorAttention.value;
+    if (homeDot3) homeDot3.style.backgroundColor = colorWarning.value;
+    
+    // Update all solar dots
+    const solarDot0 = document.getElementById('solar-dot-0');
+    const solarDot1 = document.getElementById('solar-dot-1');
+    const solarDot2 = document.getElementById('solar-dot-2');
+    const solarDot3 = document.getElementById('solar-dot-3');
+    
+    if (solarDot0) solarDot0.style.backgroundColor = colorGood.value;
+    if (solarDot1) {
+        solarDot1.style.backgroundColor = colorOk.value;
+        solarDot1.style.borderColor = '#999';
+    }
+    if (solarDot2) solarDot2.style.backgroundColor = colorAttention.value;
+    if (solarDot3) solarDot3.style.backgroundColor = colorWarning.value;
+}
+
+/**
+ * Update threshold range labels dynamically
+ * @param {string} type - 'grid', 'home', or 'solar'
+ */
+function updateThresholdRanges(type) {
+    const t0Input = document.getElementById(`${type}_threshold_0`);
+    const t1Input = document.getElementById(`${type}_threshold_1`);
+    const t2Input = document.getElementById(`${type}_threshold_2`);
+    
+    if (!t0Input || !t1Input || !t2Input) return;
+    
+    const t0 = parseFloat(t0Input.value) || 0;
+    const t1 = parseFloat(t1Input.value) || 0;
+    const t2 = parseFloat(t2Input.value) || 0;
+    
+    // Update range labels
+    const range0 = document.getElementById(`${type}-range-0`);
+    const range1 = document.getElementById(`${type}-range-1`);
+    const range2 = document.getElementById(`${type}-range-2`);
+    const range3 = document.getElementById(`${type}-range-3`);
+    
+    if (range0) range0.textContent = `< ${t0} kW`;
+    if (range1) range1.textContent = `${t0}–${t1} kW`;
+    if (range2) range2.textContent = `${t1}–${t2} kW`;
+    if (range3) range3.textContent = `≥ ${t2} kW`;
+}
+
+/**
+ * Restore factory defaults for thresholds and colors
+ */
+async function restoreDefaults() {
+    if (!confirm('Restore all thresholds and colors to factory defaults?')) {
+        return;
+    }
+    
+    // Factory defaults
+    const defaults = {
+        grid_threshold_0: 0.0,
+        grid_threshold_1: 0.5,
+        grid_threshold_2: 2.5,
+        home_threshold_0: 0.5,
+        home_threshold_1: 1.0,
+        home_threshold_2: 2.0,
+        solar_threshold_0: 0.5,
+        solar_threshold_1: 1.5,
+        solar_threshold_2: 3.0,
+        color_good: '#00FF00',
+        color_ok: '#FFFFFF',
+        color_attention: '#FFA500',
+        color_warning: '#FF0000'
+    };
+    
+    try {
+        showMessage('Restoring defaults...', 'info');
+        
+        // Save defaults (no_reboot so changes apply immediately)
+        const response = await fetch(API_CONFIG + '?no_reboot=1', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(defaults)
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to restore defaults');
+        }
+        
+        const result = await response.json();
+        if (result.success) {
+            // Reload the page to show new values
+            await loadConfig();
+            showMessage('Factory defaults restored successfully!', 'success');
+        } else {
+            showMessage('Failed to restore defaults', 'error');
+        }
+    } catch (error) {
+        showMessage('Error restoring defaults: ' + error.message, 'error');
+        console.error('Restore error:', error);
+    }
+}
+
+/**
  * Initialize page on DOM ready
  */
 document.addEventListener('DOMContentLoaded', () => {
@@ -938,6 +1142,47 @@ document.addEventListener('DOMContentLoaded', () => {
     if (deviceName) {
         deviceName.addEventListener('input', updateSanitizedName);
     }
+    
+    const restoreDefaultsBtn = document.getElementById('restore-defaults-btn');
+    if (restoreDefaultsBtn) {
+        restoreDefaultsBtn.addEventListener('click', restoreDefaults);
+    }
+    
+    // Color picker event listeners - update dots in real-time
+    const colorGood = document.getElementById('color_good');
+    const colorOk = document.getElementById('color_ok');
+    const colorAttention = document.getElementById('color_attention');
+    const colorWarning = document.getElementById('color_warning');
+    
+    if (colorGood) colorGood.addEventListener('input', updateColorDots);
+    if (colorOk) colorOk.addEventListener('input', updateColorDots);
+    if (colorAttention) colorAttention.addEventListener('input', updateColorDots);
+    if (colorWarning) colorWarning.addEventListener('input', updateColorDots);
+    
+    // Threshold input event listeners - update ranges in real-time
+    const gridT0 = document.getElementById('grid_threshold_0');
+    const gridT1 = document.getElementById('grid_threshold_1');
+    const gridT2 = document.getElementById('grid_threshold_2');
+    
+    if (gridT0) gridT0.addEventListener('input', () => updateThresholdRanges('grid'));
+    if (gridT1) gridT1.addEventListener('input', () => updateThresholdRanges('grid'));
+    if (gridT2) gridT2.addEventListener('input', () => updateThresholdRanges('grid'));
+    
+    const homeT0 = document.getElementById('home_threshold_0');
+    const homeT1 = document.getElementById('home_threshold_1');
+    const homeT2 = document.getElementById('home_threshold_2');
+    
+    if (homeT0) homeT0.addEventListener('input', () => updateThresholdRanges('home'));
+    if (homeT1) homeT1.addEventListener('input', () => updateThresholdRanges('home'));
+    if (homeT2) homeT2.addEventListener('input', () => updateThresholdRanges('home'));
+    
+    const solarT0 = document.getElementById('solar_threshold_0');
+    const solarT1 = document.getElementById('solar_threshold_1');
+    const solarT2 = document.getElementById('solar_threshold_2');
+    
+    if (solarT0) solarT0.addEventListener('input', () => updateThresholdRanges('solar'));
+    if (solarT1) solarT1.addEventListener('input', () => updateThresholdRanges('solar'));
+    if (solarT2) solarT2.addEventListener('input', () => updateThresholdRanges('solar'));
     
     // LCD brightness slider - real-time updates (no save until button clicked)
     const brightnessSlider = document.getElementById('lcd_brightness');

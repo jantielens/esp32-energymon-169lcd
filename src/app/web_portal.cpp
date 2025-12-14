@@ -153,6 +153,38 @@ void handleGetMode(AsyncWebServerRequest *request) {
     request->send(response);
 }
 
+// Helper: Parse hex color string (#RRGGBB) to uint32_t
+uint32_t parse_hex_color(const char* hex_str) {
+    if (!hex_str || hex_str[0] != '#' || strlen(hex_str) != 7) {
+        return 0xFFFFFF;  // Default to white on invalid input
+    }
+    
+    uint32_t color = 0;
+    for (int i = 1; i < 7; i++) {
+        char c = hex_str[i];
+        uint8_t digit;
+        
+        if (c >= '0' && c <= '9') {
+            digit = c - '0';
+        } else if (c >= 'A' && c <= 'F') {
+            digit = c - 'A' + 10;
+        } else if (c >= 'a' && c <= 'f') {
+            digit = c - 'a' + 10;
+        } else {
+            return 0xFFFFFF;  // Invalid character
+        }
+        
+        color = (color << 4) | digit;
+    }
+    
+    return color & 0xFFFFFF;  // Ensure 24-bit
+}
+
+// Helper: Convert uint32_t color to #RRGGBB string
+void color_to_hex_string(uint32_t color, char* buffer, size_t buffer_size) {
+    snprintf(buffer, buffer_size, "#%06X", color & 0xFFFFFF);
+}
+
 // GET /api/config - Return current configuration
 void handleGetConfig(AsyncWebServerRequest *request) {
     
@@ -192,6 +224,28 @@ void handleGetConfig(AsyncWebServerRequest *request) {
     
     // LCD settings
     doc["lcd_brightness"] = current_config->lcd_brightness;
+    
+    // Power thresholds
+    doc["grid_threshold_0"] = current_config->grid_threshold[0];
+    doc["grid_threshold_1"] = current_config->grid_threshold[1];
+    doc["grid_threshold_2"] = current_config->grid_threshold[2];
+    doc["home_threshold_0"] = current_config->home_threshold[0];
+    doc["home_threshold_1"] = current_config->home_threshold[1];
+    doc["home_threshold_2"] = current_config->home_threshold[2];
+    doc["solar_threshold_0"] = current_config->solar_threshold[0];
+    doc["solar_threshold_1"] = current_config->solar_threshold[1];
+    doc["solar_threshold_2"] = current_config->solar_threshold[2];
+    
+    // Color configuration (convert to hex strings)
+    char color_buf[8];
+    color_to_hex_string(current_config->color_good, color_buf, sizeof(color_buf));
+    doc["color_good"] = color_buf;
+    color_to_hex_string(current_config->color_ok, color_buf, sizeof(color_buf));
+    doc["color_ok"] = color_buf;
+    color_to_hex_string(current_config->color_attention, color_buf, sizeof(color_buf));
+    doc["color_attention"] = color_buf;
+    color_to_hex_string(current_config->color_warning, color_buf, sizeof(color_buf));
+    doc["color_warning"] = color_buf;
     
     String response;
     serializeJson(doc, response);
@@ -298,11 +352,72 @@ void handlePostConfig(AsyncWebServerRequest *request, uint8_t *data, size_t len,
         Logger.logMessagef("Portal", "Brightness saved: %d%%", current_brightness);
     }
     
+    // Power thresholds - update if fields exist
+    if (doc.containsKey("grid_threshold_0")) {
+        current_config->grid_threshold[0] = doc["grid_threshold_0"];
+    }
+    if (doc.containsKey("grid_threshold_1")) {
+        current_config->grid_threshold[1] = doc["grid_threshold_1"];
+    }
+    if (doc.containsKey("grid_threshold_2")) {
+        current_config->grid_threshold[2] = doc["grid_threshold_2"];
+    }
+    if (doc.containsKey("home_threshold_0")) {
+        current_config->home_threshold[0] = doc["home_threshold_0"];
+    }
+    if (doc.containsKey("home_threshold_1")) {
+        current_config->home_threshold[1] = doc["home_threshold_1"];
+    }
+    if (doc.containsKey("home_threshold_2")) {
+        current_config->home_threshold[2] = doc["home_threshold_2"];
+    }
+    if (doc.containsKey("solar_threshold_0")) {
+        current_config->solar_threshold[0] = doc["solar_threshold_0"];
+    }
+    if (doc.containsKey("solar_threshold_1")) {
+        current_config->solar_threshold[1] = doc["solar_threshold_1"];
+    }
+    if (doc.containsKey("solar_threshold_2")) {
+        current_config->solar_threshold[2] = doc["solar_threshold_2"];
+    }
+    
+    // Color configuration - parse hex strings to uint32_t
+    if (doc.containsKey("color_good")) {
+        const char* color_str = doc["color_good"];
+        if (color_str) {
+            current_config->color_good = parse_hex_color(color_str);
+        }
+    }
+    if (doc.containsKey("color_ok")) {
+        const char* color_str = doc["color_ok"];
+        if (color_str) {
+            current_config->color_ok = parse_hex_color(color_str);
+        }
+    }
+    if (doc.containsKey("color_attention")) {
+        const char* color_str = doc["color_attention"];
+        if (color_str) {
+            current_config->color_attention = parse_hex_color(color_str);
+        }
+    }
+    if (doc.containsKey("color_warning")) {
+        const char* color_str = doc["color_warning"];
+        if (color_str) {
+            current_config->color_warning = parse_hex_color(color_str);
+        }
+    }
+    
     current_config->magic = CONFIG_MAGIC;
     
-    // Validate config
+    // Validate basic config structure
     if (!config_manager_is_valid(current_config)) {
         request->send(400, "application/json", "{\"success\":false,\"message\":\"Invalid configuration\"}");
+        return;
+    }
+    
+    // Validate thresholds
+    if (!config_manager_validate_thresholds(current_config)) {
+        request->send(400, "application/json", "{\"success\":false,\"message\":\"Invalid threshold values or ordering (T0 <= T1 <= T2 required)\"}");
         return;
     }
     

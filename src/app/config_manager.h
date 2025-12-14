@@ -61,6 +61,17 @@ struct DeviceConfig {
     // LCD settings
     uint8_t lcd_brightness;  // 0-100%, default 100
     
+    // Power Thresholds (3 per type = 9 total)
+    float grid_threshold[3];     // Default: {0.0, 0.5, 2.5}
+    float home_threshold[3];     // Default: {0.5, 1.0, 2.0}
+    float solar_threshold[3];    // Default: {0.5, 1.5, 3.0}
+    
+    // Color Configuration (4 global colors, RGB hex)
+    uint32_t color_good;         // Default: 0x00FF00 (green)
+    uint32_t color_ok;           // Default: 0xFFFFFF (white)
+    uint32_t color_attention;    // Default: 0xFFA500 (orange)
+    uint32_t color_warning;      // Default: 0xFF0000 (red)
+    
     // Validation flag (magic number to detect valid config)
     uint32_t magic;
 };
@@ -74,6 +85,7 @@ bool config_manager_load(DeviceConfig *config);       // Load config from NVS
 bool config_manager_save(const DeviceConfig *config); // Save config to NVS
 bool config_manager_reset();                          // Erase config from NVS
 bool config_manager_is_valid(const DeviceConfig *config); // Check if config is valid
+bool config_manager_validate_thresholds(const DeviceConfig *config); // Validate threshold values and ordering
 void config_manager_print(const DeviceConfig *config); // Debug print config
 void config_manager_sanitize_device_name(const char *input, char *output, size_t max_len); // Sanitize name for mDNS
 String config_manager_get_default_device_name();      // Get default device name with chip ID

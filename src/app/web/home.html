@@ -44,6 +44,190 @@
                 </div>
             </section>
 
+            <!-- Power Threshold Configuration Section -->
+            <section class="section">
+                <h2>⚡ Power Thresholds</h2>
+                <p class="section-description">Configure thresholds (T<sub>0</sub>, T<sub>1</sub>, T<sub>2</sub>) that define color zones for power displays. Each threshold value creates a boundary between zones. The colored dots below show which color appears in each zone.</p>
+                
+                <!-- Grid Power Thresholds -->
+                <div class="form-group">
+                    <label>Grid Power (kW)</label>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <!-- Top line: Input boxes -->
+                        <div style="display: flex; gap: 15px; align-items: center;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <label style="font-size: 13px; color: #666; font-weight: 600; min-width: 25px;">T<sub>0</sub>:</label>
+                                <input type="number" id="grid_threshold_0" name="grid_threshold_0" step="0.1" min="-10.0" max="10.0" value="0.0" style="width: 80px; padding: 6px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
+                                <span style="font-size: 12px; color: #888; font-weight: 500;">kW</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <label style="font-size: 13px; color: #666; font-weight: 600; min-width: 25px;">T<sub>1</sub>:</label>
+                                <input type="number" id="grid_threshold_1" name="grid_threshold_1" step="0.1" min="-10.0" max="10.0" value="0.5" style="width: 80px; padding: 6px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
+                                <span style="font-size: 12px; color: #888; font-weight: 500;">kW</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <label style="font-size: 13px; color: #666; font-weight: 600; min-width: 25px;">T<sub>2</sub>:</label>
+                                <input type="number" id="grid_threshold_2" name="grid_threshold_2" step="0.1" min="-10.0" max="10.0" value="2.5" style="width: 80px; padding: 6px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
+                                <span style="font-size: 12px; color: #888; font-weight: 500;">kW</span>
+                            </div>
+                        </div>
+                        <!-- Bottom line: Visual representation -->
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: #f9f9f9; border-radius: 6px; padding: 12px 15px;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span class="color-dot" id="grid-dot-0"></span>
+                                <span id="grid-range-0" style="font-size: 13px; color: #444; white-space: nowrap; font-family: 'Courier New', monospace; font-weight: 500;">&lt; 0 kW</span>
+                            </div>
+                            <span style="color: #bbb; font-size: 16px; margin: 0 4px; font-weight: bold;">→</span>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span class="color-dot" id="grid-dot-1"></span>
+                                <span id="grid-range-1" style="font-size: 13px; color: #444; white-space: nowrap; font-family: 'Courier New', monospace; font-weight: 500;">0–0.5 kW</span>
+                            </div>
+                            <span style="color: #bbb; font-size: 16px; margin: 0 4px; font-weight: bold;">→</span>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span class="color-dot" id="grid-dot-2"></span>
+                                <span id="grid-range-2" style="font-size: 13px; color: #444; white-space: nowrap; font-family: 'Courier New', monospace; font-weight: 500;">0.5–2.5 kW</span>
+                            </div>
+                            <span style="color: #bbb; font-size: 16px; margin: 0 4px; font-weight: bold;">→</span>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span class="color-dot" id="grid-dot-3"></span>
+                                <span id="grid-range-3" style="font-size: 13px; color: #444; white-space: nowrap; font-family: 'Courier New', monospace; font-weight: 500;">≥ 2.5 kW</span>
+                            </div>
+                        </div>
+                    </div>
+                    <small>Grid supports negative values (export). T<sub>0</sub> ≤ T<sub>1</sub> ≤ T<sub>2</sub> required.</small>
+                </div>
+
+                <!-- Home Power Thresholds -->
+                <div class="form-group">
+                    <label>Home Consumption (kW)</label>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <!-- Top line: Input boxes -->
+                        <div style="display: flex; gap: 15px; align-items: center;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <label style="font-size: 13px; color: #666; font-weight: 600; min-width: 25px;">T<sub>0</sub>:</label>
+                                <input type="number" id="home_threshold_0" name="home_threshold_0" step="0.1" min="0.0" max="10.0" value="0.5" style="width: 80px; padding: 6px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
+                                <span style="font-size: 12px; color: #888; font-weight: 500;">kW</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <label style="font-size: 13px; color: #666; font-weight: 600; min-width: 25px;">T<sub>1</sub>:</label>
+                                <input type="number" id="home_threshold_1" name="home_threshold_1" step="0.1" min="0.0" max="10.0" value="1.0" style="width: 80px; padding: 6px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
+                                <span style="font-size: 12px; color: #888; font-weight: 500;">kW</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <label style="font-size: 13px; color: #666; font-weight: 600; min-width: 25px;">T<sub>2</sub>:</label>
+                                <input type="number" id="home_threshold_2" name="home_threshold_2" step="0.1" min="0.0" max="10.0" value="2.0" style="width: 80px; padding: 6px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
+                                <span style="font-size: 12px; color: #888; font-weight: 500;">kW</span>
+                            </div>
+                        </div>
+                        <!-- Bottom line: Visual representation -->
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: #f9f9f9; border-radius: 6px; padding: 12px 15px;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span class="color-dot" id="home-dot-0"></span>
+                                <span id="home-range-0" style="font-size: 13px; color: #444; white-space: nowrap; font-family: 'Courier New', monospace; font-weight: 500;">&lt; 0.5 kW</span>
+                            </div>
+                            <span style="color: #bbb; font-size: 16px; margin: 0 4px; font-weight: bold;">→</span>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span class="color-dot" id="home-dot-1"></span>
+                                <span id="home-range-1" style="font-size: 13px; color: #444; white-space: nowrap; font-family: 'Courier New', monospace; font-weight: 500;">0.5–1.0 kW</span>
+                            </div>
+                            <span style="color: #bbb; font-size: 16px; margin: 0 4px; font-weight: bold;">→</span>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span class="color-dot" id="home-dot-2"></span>
+                                <span id="home-range-2" style="font-size: 13px; color: #444; white-space: nowrap; font-family: 'Courier New', monospace; font-weight: 500;">1.0–2.0 kW</span>
+                            </div>
+                            <span style="color: #bbb; font-size: 16px; margin: 0 4px; font-weight: bold;">→</span>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span class="color-dot" id="home-dot-3"></span>
+                                <span id="home-range-3" style="font-size: 13px; color: #444; white-space: nowrap; font-family: 'Courier New', monospace; font-weight: 500;">≥ 2.0 kW</span>
+                            </div>
+                        </div>
+                    </div>
+                    <small>Home must be non-negative. T<sub>0</sub> ≤ T<sub>1</sub> ≤ T<sub>2</sub> required.</small>
+                </div>
+
+                <!-- Solar Power Thresholds -->
+                <div class="form-group">
+                    <label>Solar Generation (kW)</label>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <!-- Top line: Input boxes -->
+                        <div style="display: flex; gap: 15px; align-items: center;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <label style="font-size: 13px; color: #666; font-weight: 600; min-width: 25px;">T<sub>0</sub>:</label>
+                                <input type="number" id="solar_threshold_0" name="solar_threshold_0" step="0.1" min="0.0" max="10.0" value="0.5" style="width: 80px; padding: 6px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
+                                <span style="font-size: 12px; color: #888; font-weight: 500;">kW</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <label style="font-size: 13px; color: #666; font-weight: 600; min-width: 25px;">T<sub>1</sub>:</label>
+                                <input type="number" id="solar_threshold_1" name="solar_threshold_1" step="0.1" min="0.0" max="10.0" value="1.5" style="width: 80px; padding: 6px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
+                                <span style="font-size: 12px; color: #888; font-weight: 500;">kW</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <label style="font-size: 13px; color: #666; font-weight: 600; min-width: 25px;">T<sub>2</sub>:</label>
+                                <input type="number" id="solar_threshold_2" name="solar_threshold_2" step="0.1" min="0.0" max="10.0" value="3.0" style="width: 80px; padding: 6px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
+                                <span style="font-size: 12px; color: #888; font-weight: 500;">kW</span>
+                            </div>
+                        </div>
+                        <!-- Bottom line: Visual representation -->
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: #f9f9f9; border-radius: 6px; padding: 12px 15px;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span class="color-dot" id="solar-dot-0"></span>
+                                <span id="solar-range-0" style="font-size: 13px; color: #444; white-space: nowrap; font-family: 'Courier New', monospace; font-weight: 500;">&lt; 0.5 kW</span>
+                            </div>
+                            <span style="color: #bbb; font-size: 16px; margin: 0 4px; font-weight: bold;">→</span>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span class="color-dot" id="solar-dot-1"></span>
+                                <span id="solar-range-1" style="font-size: 13px; color: #444; white-space: nowrap; font-family: 'Courier New', monospace; font-weight: 500;">0.5–1.5 kW</span>
+                            </div>
+                            <span style="color: #bbb; font-size: 16px; margin: 0 4px; font-weight: bold;">→</span>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span class="color-dot" id="solar-dot-2"></span>
+                                <span id="solar-range-2" style="font-size: 13px; color: #444; white-space: nowrap; font-family: 'Courier New', monospace; font-weight: 500;">1.5–3.0 kW</span>
+                            </div>
+                            <span style="color: #bbb; font-size: 16px; margin: 0 4px; font-weight: bold;">→</span>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <span class="color-dot" id="solar-dot-3"></span>
+                                <span id="solar-range-3" style="font-size: 13px; color: #444; white-space: nowrap; font-family: 'Courier New', monospace; font-weight: 500;">≥ 3.0 kW</span>
+                            </div>
+                        </div>
+                    </div>
+                    <small>Solar must be non-negative. T<sub>0</sub> ≤ T<sub>1</sub> ≤ T<sub>2</sub> required.</small>
+                </div>
+            </section>
+
+            <!-- Color Configuration Section -->
+            <section class="section">
+                <h2>🎨 Color Configuration</h2>
+                <p class="section-description">Configure colors for the 4 power zones. Colors apply globally across all power types.</p>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                    <div class="form-group">
+                        <label for="color_good">Good Zone Color</label>
+                        <input type="color" id="color_good" name="color_good" value="#00FF00" style="width: 100%; height: 50px; cursor: pointer;">
+                        <small>Value &lt; T0 (default: green)</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="color_ok">OK Zone Color</label>
+                        <input type="color" id="color_ok" name="color_ok" value="#FFFFFF" style="width: 100%; height: 50px; cursor: pointer;">
+                        <small>T0 ≤ value &lt; T1 (default: white)</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="color_attention">Attention Zone Color</label>
+                        <input type="color" id="color_attention" name="color_attention" value="#FFA500" style="width: 100%; height: 50px; cursor: pointer;">
+                        <small>T1 ≤ value &lt; T2 (default: orange)</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="color_warning">Warning Zone Color</label>
+                        <input type="color" id="color_warning" name="color_warning" value="#FF0000" style="width: 100%; height: 50px; cursor: pointer;">
+                        <small>value ≥ T2 (default: red)</small>
+                    </div>
+                </div>
+                <div class="form-group" style="margin-top: 20px;">
+                    <button type="button" id="restore-defaults-btn" class="btn btn-secondary" style="width: 100%;">
+                        🔄 Restore Factory Defaults
+                    </button>
+                    <small>Reset all thresholds and colors to factory defaults</small>
+                </div>
+            </section>
+
             {{FOOTER}}
         </form>
     </div>

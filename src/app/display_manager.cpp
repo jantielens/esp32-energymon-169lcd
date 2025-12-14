@@ -14,6 +14,9 @@ static SplashScreen* splash_screen = nullptr;
 static PowerScreen* power_screen = nullptr;
 static ScreenBase* current_screen = nullptr;
 
+// FPS counter - Set to 1 to enable, 0 to disable
+#define ENABLE_FPS_COUNTER 0
+
 // FPS counter
 static lv_obj_t* fps_label = nullptr;
 static unsigned long fps_last_time = 0;
@@ -86,18 +89,22 @@ void display_init() {
     power_screen = new PowerScreen();
     power_screen->create();
     
+#if ENABLE_FPS_COUNTER
     // Create FPS counter label on splash screen (will be recreated on screen changes)
     fps_label = lv_label_create(lv_scr_act());
     lv_obj_set_style_text_color(fps_label, lv_color_hex(0x0000FF), 0);  // BGR for red
     lv_obj_set_style_text_font(fps_label, &lv_font_montserrat_20, 0);   // Larger font
     lv_label_set_text(fps_label, "FPS: --");
     lv_obj_align(fps_label, LV_ALIGN_BOTTOM_RIGHT, -15, -5);  // 10px from corner
+#endif
     fps_last_time = millis();
 }
 
 void display_update() {
     lv_timer_handler();
+#if ENABLE_FPS_COUNTER
     display_update_fps();  // Update FPS counter
+#endif
     
     if (current_screen) {
         current_screen->update();
@@ -112,7 +119,9 @@ void display_set_boot_progress(int percent, const char* status) {
         // Force a few LVGL updates to render immediately
         for (int i = 0; i < 3; i++) {
             lv_timer_handler();
+#if ENABLE_FPS_COUNTER
             display_update_fps();  // Count FPS during boot
+#endif
             delay(5);
         }
     }
@@ -123,6 +132,7 @@ void display_show_power_screen() {
         power_screen->show();
         current_screen = power_screen;
         
+#if ENABLE_FPS_COUNTER
         // Recreate FPS counter label on the new screen
         if (fps_label) {
             lv_obj_del(fps_label);  // Delete from previous screen
@@ -132,6 +142,7 @@ void display_show_power_screen() {
         lv_obj_set_style_text_font(fps_label, &lv_font_montserrat_20, 0);   // Larger font
         lv_label_set_text(fps_label, "FPS: --");
         lv_obj_align(fps_label, LV_ALIGN_BOTTOM_RIGHT, -15, -5);  // 10px from corner
+#endif
         
         // Force update
         lv_timer_handler();

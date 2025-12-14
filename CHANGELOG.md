@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [1.2.0] - 2025-12-13
+
 ### Added
 - **Power Screen Visual Enhancements**: Comprehensive improvements to energy monitoring display
   - Color-coded power indicators for at-a-glance status understanding
@@ -20,13 +24,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Automatic PNG-to-LVGL conversion during build process
     - Icon recoloring support matching power state colors
   - Vertical bar charts for proportional power visualization
-    - 0-3kW scale for all three power sources
-    - Color-coded bars matching power state indicators
-    - Real-time updates synchronized with MQTT data
-  - RGB→BGR color swap in flush callback for correct anti-aliased colors on BGR displays
+    - 0-3kW scale with color-coded indicators
+    - Bars update in real-time with power values
+
+- **Configurable Power Color Thresholds**: User-customizable power screen color thresholds
+  - Web portal configuration for all three power types (grid, home, solar)
+  - 3 thresholds per power type defining 4 color zones (good/ok/attention/warning)
+  - Configurable colors for all 4 zones via color pickers
+  - Grid power supports negative thresholds for export scenarios
+  - Factory defaults: Grid [0.0, 0.5, 2.5], Home [0.5, 1.0, 2.0], Solar [0.5, 1.5, 3.0]
+  - Default colors: Good=#00FF00, OK=#FFFFFF, Attention=#FFA500, Warning=#FF0000
+  - Unified color calculation algorithm with RGB→BGR conversion
+  - Client-side and server-side validation (T0 ≤ T1 ≤ T2 required)
+  - "Restore Factory Defaults" button for quick reset
+  - Real-time display updates (< 1 second from save to color change)
+  - NVS persistence across reboots (52 bytes storage overhead)
+
+- **Rolling Power Statistics**: 10-minute min/max visual indicators on power bars
+  - Horizontal overlay lines showing recent min and max power levels
+  - Separate statistics for each power type (solar, home, grid)
+  - 1-second sampling with 600-sample circular buffer (1.6 KB total memory)
+  - Visual styling: 1px width, white color, 70% opacity
+  - Lines extend 2px left and 5px right beyond bar edges for visibility
+  - Statistics reset on device reboot (not persisted)
+  - Min/max calculations exclude NaN values for data integrity
+
+### Changed
+- Power screen color determination now uses configurable thresholds instead of hardcoded values
+- REST API `/api/config` extended with 13 new fields (9 thresholds + 4 colors)
+- FPS counter now disabled by default (set ENABLE_FPS_COUNTER=1 to re-enable)
 
 ### Fixed
 - Display color accuracy for anti-aliased text and graphics on ST7789V2 BGR panel
+  - Implemented RGB→BGR color swap in flush callback for correct anti-aliased colors on BGR displays
+
+### Migration
+- Configuration is backward-compatible: devices with old NVS configs will automatically apply factory defaults for new threshold/color fields
+- No user action required - existing configurations preserved, new fields initialized with sensible defaults
 
 ---
 

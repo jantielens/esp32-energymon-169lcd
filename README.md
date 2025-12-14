@@ -172,7 +172,7 @@ The hostname is automatically set from the device name and includes the last 4 h
 |--------|----------|----------|
 | GET | `/api/info` | Device info (firmware, chip, cores, flash, PSRAM, hostname, MAC) |
 | GET | `/api/health` | Real-time health stats (CPU, memory, WiFi, uptime, hostname) |
-| GET | `/api/config` | Current configuration (including LCD brightness) |
+| GET | `/api/config` | Current configuration (including power thresholds, colors, LCD brightness) |
 | POST | `/api/config` | Save configuration (triggers reboot by default) |
 | POST | `/api/config?no_reboot=1` | Save configuration without rebooting |
 | DELETE | `/api/config` | Reset to defaults (triggers reboot) |

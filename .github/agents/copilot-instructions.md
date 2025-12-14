@@ -374,6 +374,8 @@ If the build fails:
 ## Active Technologies
 - C++ (Arduino framework for ESP32, ESP-IDF v2.0.x via arduino-cli) + LVGL@8.4.0 (display widgets), lv_font_montserrat_48/32/14 (text rendering), existing PowerScreen class (001-power-screen-enhancements)
 - No NVS required (no user configuration - color/icon settings are compile-time constants) (001-power-screen-enhancements)
+- C++ (Arduino framework for ESP32) + LVGL 8.3.0, ESPAsyncWebServer 1.2.3, ArduinoJson 6.21.3, NVS (built-in ESP32) (002-power-color-thresholds)
+- NVS (Non-Volatile Storage) for configuration persistence via DeviceConfig struct (002-power-color-thresholds)
 
 ## Recent Changes
 - 001-power-screen-enhancements: Added C++ (Arduino framework for ESP32, ESP-IDF v2.0.x via arduino-cli) + LVGL@8.4.0 (display widgets), lv_font_montserrat_48/32/14 (text rendering), existing PowerScreen class
