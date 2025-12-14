@@ -150,6 +150,24 @@ jobs:
         chmod +x setup.sh
         ./setup.sh
     
+    - name: Install custom partition table
+      run: |
+        # Copy custom partition file to ESP32 package directory
+        PARTITION_FILE="partitions_ota_1_9mb.csv"
+        if [ -f "$PARTITION_FILE" ]; then
+          ESP32_DIR=$(find ~/.arduino15/packages/esp32/hardware/esp32 -maxdepth 1 -type d | tail -1)
+          PARTITION_DIR="$ESP32_DIR/tools/partitions"
+          if [ -d "$PARTITION_DIR" ]; then
+            cp "$PARTITION_FILE" "$PARTITION_DIR/"
+            echo "✓ Installed $PARTITION_FILE to $PARTITION_DIR"
+            ls -lh "$PARTITION_DIR/$PARTITION_FILE"
+          else
+            echo "Warning: Partition directory not found at $PARTITION_DIR"
+          fi
+        else
+          echo "Warning: $PARTITION_FILE not found in repository"
+        fi
+    
     - name: Compile firmware for ${{ matrix.board.name }}
       run: |
         chmod +x build.sh
