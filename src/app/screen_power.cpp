@@ -5,9 +5,13 @@
  */
 
 #include "screen_power.h"
+#include "config_manager.h"
 #include "icons.h"
 #include <math.h>
 #include <stdio.h>
+
+// External reference to global configuration
+extern DeviceConfig device_config;
 
 // Color definitions for power state visualization
 // 
@@ -27,33 +31,140 @@ const lv_color_t COLOR_RED          = lv_color_hex(0x0000FF);  // BGR for red (d
 
 #define TEXT_COLOR lv_color_hex(0xFFFFFF)
 
+// ============================================================================
+// PowerStatistics Class - Rolling Window Statistics
+// ============================================================================
+
+class PowerStatistics {
+public:
+    PowerStatistics(size_t buffer_size = 600) : buffer_size(buffer_size) {
+        buffer.reserve(buffer_size);
+    }
+    
+    void addSample(float value) {
+        if (isnan(value)) return;  // Ignore invalid samples
+        
+        if (buffer.size() < buffer_size) {
+            // Buffer not full yet
+            buffer.push_back(value);
+            running_sum += value;
+        } else {
+            // Circular buffer - replace oldest
+            running_sum -= buffer[head];
+            buffer[head] = value;
+            running_sum += value;
+            head = (head + 1) % buffer_size;
+        }
+        
+        // Recalculate min/max (could optimize with heap, but 120 samples is fast enough)
+        recalculate();
+    }
+    
+    float getMin() const { return cached_min; }
+    float getMax() const { return cached_max; }
+    float getAvg() const { return cached_avg; }
+    
+    bool hasData() const { return !buffer.empty(); }
+    size_t getSampleCount() const { return buffer.size(); }
+    
+    void clear() {
+        buffer.clear();
+        head = 0;
+        running_sum = 0.0f;
+        cached_min = NAN;
+        cached_max = NAN;
+        cached_avg = NAN;
+    }
+    
+private:
+    std::vector<float> buffer;
+    size_t buffer_size;
+    size_t head = 0;
+    float running_sum = 0.0f;
+    
+    // Cached statistics
+    float cached_min = NAN;
+    float cached_max = NAN;
+    float cached_avg = NAN;
+    
+    void recalculate() {
+        if (buffer.empty()) {
+            cached_min = cached_max = cached_avg = NAN;
+            return;
+        }
+        
+        // Calculate min/max
+        cached_min = buffer[0];
+        cached_max = buffer[0];
+        for (const float& val : buffer) {
+            if (val < cached_min) cached_min = val;
+            if (val > cached_max) cached_max = val;
+        }
+        
+        // Calculate average from running sum
+        cached_avg = running_sum / buffer.size();
+    }
+};
+
 PowerScreen::PowerScreen() {
+    // Initialize statistics trackers (10 minutes @ 1-second sampling = 600 samples)
+    solar_stats = static_cast<void*>(new PowerStatistics(600));
+    home_stats = static_cast<void*>(new PowerStatistics(600));
+    grid_stats = static_cast<void*>(new PowerStatistics(600));
 }
 
 PowerScreen::~PowerScreen() {
     destroy();
+    
+    // Clean up statistics
+    delete static_cast<PowerStatistics*>(solar_stats);
+    delete static_cast<PowerStatistics*>(home_stats);
+    delete static_cast<PowerStatistics*>(grid_stats);
+    solar_stats = nullptr;
+    home_stats = nullptr;
+    grid_stats = nullptr;
 }
 
+// Helper: Convert RGB to BGR for display hardware compatibility
+lv_color_t PowerScreen::rgb_to_bgr(uint32_t rgb) {
+    uint8_t r = (rgb >> 16) & 0xFF;
+    uint8_t g = (rgb >> 8) & 0xFF;
+    uint8_t b = rgb & 0xFF;
+    return lv_color_hex((b << 16) | (g << 8) | r);
+}
+
+// Unified color determination based on configurable thresholds
+lv_color_t PowerScreen::get_power_color(float value, float thresholds[3]) {
+    if (isnan(value)) {
+        // No data - use "ok" color (typically white)
+        return rgb_to_bgr(device_config.color_ok);
+    }
+    
+    uint32_t rgb;
+    if (value < thresholds[0]) {
+        rgb = device_config.color_good;
+    } else if (value < thresholds[1]) {
+        rgb = device_config.color_ok;
+    } else if (value < thresholds[2]) {
+        rgb = device_config.color_attention;
+    } else {
+        rgb = device_config.color_warning;
+    }
+    
+    return rgb_to_bgr(rgb);
+}
+
+// Convenience wrappers for each power type
 lv_color_t PowerScreen::get_grid_color(float kw) {
-    if (isnan(kw)) return COLOR_WHITE;
-    if (kw < 0.0f) return COLOR_BRIGHT_GREEN;  // Exporting
-    if (kw < 0.5f) return COLOR_WHITE;         // Low import
-    if (kw < 2.5f) return COLOR_ORANGE;        // Medium import
-    return COLOR_RED;                           // High import
+    return get_power_color(kw, device_config.grid_threshold);
 }
 
 lv_color_t PowerScreen::get_home_color(float kw) {
-    if (isnan(kw)) return COLOR_WHITE;
-    if (kw < 0.5f) return COLOR_BRIGHT_GREEN;  // Very low
-    if (kw < 1.0f) return COLOR_WHITE;         // Low
-    if (kw < 2.0f) return COLOR_ORANGE;        // Medium
-    return COLOR_RED;                           // High
+    return get_power_color(kw, device_config.home_threshold);
 }
 
 lv_color_t PowerScreen::get_solar_color(float kw) {
-    if (isnan(kw)) return COLOR_WHITE;
-    if (kw < 0.5f) return COLOR_WHITE;          // Low/no generation
-    return COLOR_BRIGHT_GREEN;                  // Active generation
+    return get_power_color(kw, device_config.solar_threshold);
 }
 
 void PowerScreen::update_power_colors() {
@@ -243,6 +354,32 @@ void PowerScreen::create() {
     lv_obj_set_style_bg_opa(grid_bar, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_bg_color(grid_bar, COLOR_WHITE, LV_PART_INDICATOR);
     lv_obj_set_style_bg_opa(grid_bar, LV_OPA_COVER, LV_PART_INDICATOR);
+    
+    // Box plot overlays (Q1-Q3 boxes + median/min/max lines)
+    // White lines for min/max overlays
+    lv_color_t line_color = lv_color_hex(0xFFFFFF);
+    
+    // Helper: create min/max line
+    auto create_line = [&]() -> lv_obj_t* {
+        lv_obj_t* line = lv_line_create(background);
+        lv_obj_set_style_line_width(line, 1, 0);
+        lv_obj_set_style_line_color(line, line_color, 0);
+        lv_obj_set_style_line_opa(line, LV_OPA_70, 0);  // 70% opacity for subtle overlay
+        lv_obj_add_flag(line, LV_OBJ_FLAG_HIDDEN);
+        return line;
+    };
+    
+    // Solar min/max lines
+    solar_line_min = create_line();
+    solar_line_max = create_line();
+    
+    // Home min/max lines
+    home_line_min = create_line();
+    home_line_max = create_line();
+    
+    // Grid min/max lines
+    grid_line_min = create_line();
+    grid_line_max = create_line();
 }
 
 void PowerScreen::destroy() {
@@ -255,6 +392,9 @@ void PowerScreen::destroy() {
         solar_value = home_value = grid_value = nullptr;
         solar_unit = home_unit = grid_unit = nullptr;
         solar_bar = home_bar = grid_bar = nullptr;
+        solar_line_min = solar_line_max = nullptr;
+        home_line_min = home_line_max = nullptr;
+        grid_line_min = grid_line_max = nullptr;
     }
     visible = false;
 }
@@ -298,6 +438,7 @@ void PowerScreen::set_solar_power(float kw) {
     
     update_home_value();
     update_power_colors();
+    update_statistics();
 }
 
 void PowerScreen::set_grid_power(float kw) {
@@ -324,6 +465,7 @@ void PowerScreen::set_grid_power(float kw) {
     
     update_home_value();
     update_power_colors();
+    update_statistics();
 }
 
 void PowerScreen::update_home_value() {
@@ -376,6 +518,110 @@ void PowerScreen::update_bar_charts() {
             lv_obj_set_style_bg_color(grid_bar, get_grid_color(grid_kw), LV_PART_INDICATOR);
         } else {
             lv_bar_set_value(grid_bar, 0, LV_ANIM_OFF);
+        }
+    }
+}
+
+void PowerScreen::update_statistics() {
+    unsigned long current_time = millis();
+    
+    // Sample on every display update (1 second) to catch all MQTT updates
+    // MQTT updates arrive at max 2× per second (500ms), display updates every 1000ms
+    // This ensures we never miss significant min/max values
+    
+    // Add samples to statistics buffers
+    if (solar_stats) {
+        PowerStatistics* stats = static_cast<PowerStatistics*>(solar_stats);
+        stats->addSample(solar_kw);
+    }
+    
+    if (grid_stats) {
+        PowerStatistics* stats = static_cast<PowerStatistics*>(grid_stats);
+        stats->addSample(grid_kw);
+    }
+    
+    // Calculate home consumption and add to home stats
+    float home_kw = NAN;
+    if (!isnan(solar_kw) && !isnan(grid_kw)) {
+        home_kw = solar_kw + grid_kw;
+    }
+    if (home_stats) {
+        PowerStatistics* stats = static_cast<PowerStatistics*>(home_stats);
+        stats->addSample(home_kw);
+    }
+    
+    // Update overlay lines
+    update_stat_overlays();
+}
+
+void PowerScreen::update_stat_overlays() {
+    // Bar positioning constants
+    const float bar_max_kw = 3.0f;
+    const int32_t bar_y = 140;
+    const int32_t bar_height = 100;
+    const int32_t bar_width = 12;
+    const int32_t screen_center_x = 120;
+    
+    // Helper: Calculate Y position from kW value (inverted, 0=bottom)
+    auto kw_to_y = [&](float kw) -> int32_t {
+        float ratio = kw / bar_max_kw;
+        if (ratio > 1.0f) ratio = 1.0f;
+        if (ratio < 0.0f) ratio = 0.0f;
+        return bar_y + bar_height - (int32_t)(ratio * bar_height);
+    };
+    
+    // Helper: Position a horizontal line across the top of the bar
+    auto position_line = [&](lv_obj_t* line, lv_point_t* points, int32_t bar_x_offset, float value_kw, const char* label) {
+        if (!line || isnan(value_kw)) {
+            if (line) lv_obj_add_flag(line, LV_OBJ_FLAG_HIDDEN);
+            return;
+        }
+        
+        int32_t y_pos = kw_to_y(value_kw);
+        
+        /* LVGL line positioning: Points are RELATIVE to line object position.
+         * We must position the line object itself, then use local coordinates.
+         * Match the bar positioning exactly: LV_ALIGN_TOP_MID with bar_x_offset.
+         */
+        
+        // Position line object exactly like the bar (same alignment), shifted 1px right
+        lv_obj_align(line, LV_ALIGN_TOP_MID, bar_x_offset + 1, y_pos);
+        
+        // Use local coordinates - span bar width from center
+        // Extend: 2px left + 5px right for proper coverage
+        points[0].x = -(bar_width/2 + 2);
+        points[0].y = 0;
+        points[1].x = bar_width/2 + 5;
+        points[1].y = 0;
+        
+        lv_line_set_points(line, points, 2);
+        lv_obj_clear_flag(line, LV_OBJ_FLAG_HIDDEN);
+    };
+    
+    // Update solar min/max (x=-107)
+    if (solar_stats) {
+        PowerStatistics* stats = static_cast<PowerStatistics*>(solar_stats);
+        if (stats->hasData()) {
+            position_line(solar_line_min, solar_min_points, -107, stats->getMin(), "Solar MIN");
+            position_line(solar_line_max, solar_max_points, -107, stats->getMax(), "Solar MAX");
+        }
+    }
+    
+    // Update home min/max (x=0)
+    if (home_stats) {
+        PowerStatistics* stats = static_cast<PowerStatistics*>(home_stats);
+        if (stats->hasData()) {
+            position_line(home_line_min, home_min_points, 0, stats->getMin(), "Home MIN");
+            position_line(home_line_max, home_max_points, 0, stats->getMax(), "Home MAX");
+        }
+    }
+    
+    // Update grid min/max (x=107)
+    if (grid_stats) {
+        PowerStatistics* stats = static_cast<PowerStatistics*>(grid_stats);
+        if (stats->hasData()) {
+            position_line(grid_line_min, grid_min_points, 107, stats->getMin(), "Grid MIN");
+            position_line(grid_line_max, grid_max_points, 107, stats->getMax(), "Grid MAX");
         }
     }
 }

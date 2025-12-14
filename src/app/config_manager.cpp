@@ -30,6 +30,19 @@
 #define KEY_MQTT_SOLAR     "mqtt_solar"
 #define KEY_MQTT_GRID      "mqtt_grid"
 #define KEY_LCD_BRIGHTNESS "lcd_bright"
+#define KEY_GRID_T0        "grid_t0"
+#define KEY_GRID_T1        "grid_t1"
+#define KEY_GRID_T2        "grid_t2"
+#define KEY_HOME_T0        "home_t0"
+#define KEY_HOME_T1        "home_t1"
+#define KEY_HOME_T2        "home_t2"
+#define KEY_SOLAR_T0       "solar_t0"
+#define KEY_SOLAR_T1       "solar_t1"
+#define KEY_SOLAR_T2       "solar_t2"
+#define KEY_COLOR_GOOD     "color_good"
+#define KEY_COLOR_OK       "color_ok"
+#define KEY_COLOR_ATTN     "color_attn"
+#define KEY_COLOR_WARN     "color_warn"
 #define KEY_MAGIC          "magic"
 
 static Preferences preferences;
@@ -133,6 +146,23 @@ bool config_manager_load(DeviceConfig *config) {
     // Load LCD settings
     config->lcd_brightness = preferences.getUChar(KEY_LCD_BRIGHTNESS, 100);
     
+    // Load power thresholds (with factory defaults)
+    config->grid_threshold[0] = preferences.getFloat(KEY_GRID_T0, 0.0f);
+    config->grid_threshold[1] = preferences.getFloat(KEY_GRID_T1, 0.5f);
+    config->grid_threshold[2] = preferences.getFloat(KEY_GRID_T2, 2.5f);
+    config->home_threshold[0] = preferences.getFloat(KEY_HOME_T0, 0.5f);
+    config->home_threshold[1] = preferences.getFloat(KEY_HOME_T1, 1.0f);
+    config->home_threshold[2] = preferences.getFloat(KEY_HOME_T2, 2.0f);
+    config->solar_threshold[0] = preferences.getFloat(KEY_SOLAR_T0, 0.5f);
+    config->solar_threshold[1] = preferences.getFloat(KEY_SOLAR_T1, 1.5f);
+    config->solar_threshold[2] = preferences.getFloat(KEY_SOLAR_T2, 3.0f);
+    
+    // Load color configuration (with factory defaults)
+    config->color_good = preferences.getUInt(KEY_COLOR_GOOD, 0x00FF00);
+    config->color_ok = preferences.getUInt(KEY_COLOR_OK, 0xFFFFFF);
+    config->color_attention = preferences.getUInt(KEY_COLOR_ATTN, 0xFFA500);
+    config->color_warning = preferences.getUInt(KEY_COLOR_WARN, 0xFF0000);
+    
     config->magic = magic;
     
     preferences.end();
@@ -192,6 +222,23 @@ bool config_manager_save(const DeviceConfig *config) {
     // Save LCD settings
     preferences.putUChar(KEY_LCD_BRIGHTNESS, config->lcd_brightness);
     
+    // Save power thresholds
+    preferences.putFloat(KEY_GRID_T0, config->grid_threshold[0]);
+    preferences.putFloat(KEY_GRID_T1, config->grid_threshold[1]);
+    preferences.putFloat(KEY_GRID_T2, config->grid_threshold[2]);
+    preferences.putFloat(KEY_HOME_T0, config->home_threshold[0]);
+    preferences.putFloat(KEY_HOME_T1, config->home_threshold[1]);
+    preferences.putFloat(KEY_HOME_T2, config->home_threshold[2]);
+    preferences.putFloat(KEY_SOLAR_T0, config->solar_threshold[0]);
+    preferences.putFloat(KEY_SOLAR_T1, config->solar_threshold[1]);
+    preferences.putFloat(KEY_SOLAR_T2, config->solar_threshold[2]);
+    
+    // Save color configuration
+    preferences.putUInt(KEY_COLOR_GOOD, config->color_good);
+    preferences.putUInt(KEY_COLOR_OK, config->color_ok);
+    preferences.putUInt(KEY_COLOR_ATTN, config->color_attention);
+    preferences.putUInt(KEY_COLOR_WARN, config->color_warning);
+    
     // Save magic number last (indicates valid config)
     preferences.putUInt(KEY_MAGIC, CONFIG_MAGIC);
     
@@ -225,6 +272,34 @@ bool config_manager_is_valid(const DeviceConfig *config) {
     if (config->magic != CONFIG_MAGIC) return false;
     if (strlen(config->wifi_ssid) == 0) return false;
     if (strlen(config->device_name) == 0) return false;
+    return true;
+}
+
+// Validate threshold values and ordering
+bool config_manager_validate_thresholds(const DeviceConfig *config) {
+    if (!config) return false;
+    
+    // Validate grid thresholds (can be negative)
+    if (config->grid_threshold[0] < -10.0f || config->grid_threshold[2] > 10.0f) return false;
+    if (!(config->grid_threshold[0] <= config->grid_threshold[1] && 
+          config->grid_threshold[1] <= config->grid_threshold[2])) return false;
+    
+    // Validate home thresholds (non-negative)
+    if (config->home_threshold[0] < 0.0f || config->home_threshold[2] > 10.0f) return false;
+    if (!(config->home_threshold[0] <= config->home_threshold[1] && 
+          config->home_threshold[1] <= config->home_threshold[2])) return false;
+    
+    // Validate solar thresholds (non-negative)
+    if (config->solar_threshold[0] < 0.0f || config->solar_threshold[2] > 10.0f) return false;
+    if (!(config->solar_threshold[0] <= config->solar_threshold[1] && 
+          config->solar_threshold[1] <= config->solar_threshold[2])) return false;
+    
+    // Validate colors (24-bit RGB, top byte must be 0)
+    if ((config->color_good & 0xFF000000) != 0) return false;
+    if ((config->color_ok & 0xFF000000) != 0) return false;
+    if ((config->color_attention & 0xFF000000) != 0) return false;
+    if ((config->color_warning & 0xFF000000) != 0) return false;
+    
     return true;
 }
 
