@@ -6,33 +6,52 @@
         {{NAV}}
 
         <form id="config-form">
-            <!-- Hello World and Sample Settings (2-column on desktop) -->
-            <div class="grid-2col">
-            <!-- MQTT Topics Section -->
+            <!-- MQTT Settings Section -->
             <section class="section">
-                <h2>📊 MQTT Topics</h2>
+                <h2>📡 MQTT Settings</h2>
+                <div class="grid-2col">
+                    <div class="form-group">
+                        <label for="mqtt_broker">MQTT Broker</label>
+                        <input type="text" id="mqtt_broker" name="mqtt_broker" maxlength="63" placeholder="e.g. mqtt.example.com">
+                        <small>MQTT server hostname or IP address</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="mqtt_port">MQTT Port</label>
+                        <input type="number" id="mqtt_port" name="mqtt_port" min="1" max="65535" placeholder="1883">
+                        <small>Default: 1883</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="mqtt_username">MQTT Username</label>
+                        <input type="text" id="mqtt_username" name="mqtt_username" maxlength="31" placeholder="Optional">
+                        <small>Leave empty if no authentication required</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="mqtt_password">MQTT Password</label>
+                        <input type="password" id="mqtt_password" name="mqtt_password" maxlength="63" placeholder="Optional">
+                        <small>Leave empty if no authentication required</small>
+                    </div>
+                </div>
                 <div class="form-group">
                     <label for="mqtt_topic_solar">Solar Power Topic</label>
                     <input type="text" id="mqtt_topic_solar" name="mqtt_topic_solar" maxlength="127" placeholder="e.g. home/solar/power">
                     <small>MQTT topic for solar power readings (in kW)</small>
                 </div>
                 <div class="form-group">
+                    <label for="mqtt_solar_value_path">Solar Value Path</label>
+                    <input type="text" id="mqtt_solar_value_path" name="mqtt_solar_value_path" maxlength="31" placeholder="e.g. . or value">
+                    <small>Enter <strong>.</strong> for direct numbers (e.g., 0.92) or a field name for JSON (e.g., "value", "power")</small>
+                </div>
+                <div class="form-group">
                     <label for="mqtt_topic_grid">Grid Power Topic</label>
                     <input type="text" id="mqtt_topic_grid" name="mqtt_topic_grid" maxlength="127" placeholder="e.g. home/grid/power">
                     <small>MQTT topic for grid power readings (JSON with 'value' field in kW)</small>
                 </div>
-            </section>
-
-            <!-- Sample Settings Section -->
-            <section class="section">
-                <h2>⚙️ Sample Settings</h2>
                 <div class="form-group">
-                    <label for="dummy_setting">Dummy Setting</label>
-                    <input type="text" id="dummy_setting" name="dummy_setting" maxlength="63">
-                    <small>Example setting for demonstration</small>
+                    <label for="mqtt_grid_value_path">Grid Value Path</label>
+                    <input type="text" id="mqtt_grid_value_path" name="mqtt_grid_value_path" maxlength="31" placeholder="e.g. value">
+                    <small>Enter <strong>.</strong> for direct numbers (e.g., 0.92) or a field name for JSON (e.g., "value", "state", "power")</small>
                 </div>
             </section>
-            </div>
 
             <!-- Display Settings Section -->
             <section class="section">
@@ -53,21 +72,21 @@
                 <div class="form-group">
                     <label>Grid Power (kW)</label>
                     <div style="display: flex; flex-direction: column; gap: 10px;">
-                        <!-- Top line: Input boxes -->
-                        <div style="display: flex; gap: 15px; align-items: center;">
+                        <!-- Input boxes stacked vertically -->
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
                             <div style="display: flex; align-items: center; gap: 6px;">
                                 <label style="font-size: 13px; color: #666; font-weight: 600; min-width: 25px;">T<sub>0</sub>:</label>
-                                <input type="number" id="grid_threshold_0" name="grid_threshold_0" step="0.1" min="-10.0" max="10.0" value="0.0" style="width: 80px; padding: 6px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
+                                <input type="number" id="grid_threshold_0" name="grid_threshold_0" step="0.1" min="-10.0" max="10.0" value="0.0" style="width: 80px; padding: 6px 10px; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
                                 <span style="font-size: 12px; color: #888; font-weight: 500;">kW</span>
                             </div>
                             <div style="display: flex; align-items: center; gap: 6px;">
                                 <label style="font-size: 13px; color: #666; font-weight: 600; min-width: 25px;">T<sub>1</sub>:</label>
-                                <input type="number" id="grid_threshold_1" name="grid_threshold_1" step="0.1" min="-10.0" max="10.0" value="0.5" style="width: 80px; padding: 6px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
+                                <input type="number" id="grid_threshold_1" name="grid_threshold_1" step="0.1" min="-10.0" max="10.0" value="0.5" style="width: 80px; padding: 6px 10px; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
                                 <span style="font-size: 12px; color: #888; font-weight: 500;">kW</span>
                             </div>
                             <div style="display: flex; align-items: center; gap: 6px;">
                                 <label style="font-size: 13px; color: #666; font-weight: 600; min-width: 25px;">T<sub>2</sub>:</label>
-                                <input type="number" id="grid_threshold_2" name="grid_threshold_2" step="0.1" min="-10.0" max="10.0" value="2.5" style="width: 80px; padding: 6px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
+                                <input type="number" id="grid_threshold_2" name="grid_threshold_2" step="0.1" min="-10.0" max="10.0" value="2.5" style="width: 80px; padding: 6px 10px; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
                                 <span style="font-size: 12px; color: #888; font-weight: 500;">kW</span>
                             </div>
                         </div>
@@ -101,21 +120,21 @@
                 <div class="form-group">
                     <label>Home Consumption (kW)</label>
                     <div style="display: flex; flex-direction: column; gap: 10px;">
-                        <!-- Top line: Input boxes -->
-                        <div style="display: flex; gap: 15px; align-items: center;">
+                        <!-- Input boxes stacked vertically -->
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
                             <div style="display: flex; align-items: center; gap: 6px;">
                                 <label style="font-size: 13px; color: #666; font-weight: 600; min-width: 25px;">T<sub>0</sub>:</label>
-                                <input type="number" id="home_threshold_0" name="home_threshold_0" step="0.1" min="0.0" max="10.0" value="0.5" style="width: 80px; padding: 6px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
+                                <input type="number" id="home_threshold_0" name="home_threshold_0" step="0.1" min="0.0" max="10.0" value="0.5" style="width: 80px; padding: 6px 10px; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
                                 <span style="font-size: 12px; color: #888; font-weight: 500;">kW</span>
                             </div>
                             <div style="display: flex; align-items: center; gap: 6px;">
                                 <label style="font-size: 13px; color: #666; font-weight: 600; min-width: 25px;">T<sub>1</sub>:</label>
-                                <input type="number" id="home_threshold_1" name="home_threshold_1" step="0.1" min="0.0" max="10.0" value="1.0" style="width: 80px; padding: 6px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
+                                <input type="number" id="home_threshold_1" name="home_threshold_1" step="0.1" min="0.0" max="10.0" value="1.0" style="width: 80px; padding: 6px 10px; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
                                 <span style="font-size: 12px; color: #888; font-weight: 500;">kW</span>
                             </div>
                             <div style="display: flex; align-items: center; gap: 6px;">
                                 <label style="font-size: 13px; color: #666; font-weight: 600; min-width: 25px;">T<sub>2</sub>:</label>
-                                <input type="number" id="home_threshold_2" name="home_threshold_2" step="0.1" min="0.0" max="10.0" value="2.0" style="width: 80px; padding: 6px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
+                                <input type="number" id="home_threshold_2" name="home_threshold_2" step="0.1" min="0.0" max="10.0" value="2.0" style="width: 80px; padding: 6px 10px; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
                                 <span style="font-size: 12px; color: #888; font-weight: 500;">kW</span>
                             </div>
                         </div>
@@ -149,21 +168,21 @@
                 <div class="form-group">
                     <label>Solar Generation (kW)</label>
                     <div style="display: flex; flex-direction: column; gap: 10px;">
-                        <!-- Top line: Input boxes -->
-                        <div style="display: flex; gap: 15px; align-items: center;">
+                        <!-- Input boxes stacked vertically -->
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
                             <div style="display: flex; align-items: center; gap: 6px;">
                                 <label style="font-size: 13px; color: #666; font-weight: 600; min-width: 25px;">T<sub>0</sub>:</label>
-                                <input type="number" id="solar_threshold_0" name="solar_threshold_0" step="0.1" min="0.0" max="10.0" value="0.5" style="width: 80px; padding: 6px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
+                                <input type="number" id="solar_threshold_0" name="solar_threshold_0" step="0.1" min="0.0" max="10.0" value="0.5" style="width: 80px; padding: 6px 10px; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
                                 <span style="font-size: 12px; color: #888; font-weight: 500;">kW</span>
                             </div>
                             <div style="display: flex; align-items: center; gap: 6px;">
                                 <label style="font-size: 13px; color: #666; font-weight: 600; min-width: 25px;">T<sub>1</sub>:</label>
-                                <input type="number" id="solar_threshold_1" name="solar_threshold_1" step="0.1" min="0.0" max="10.0" value="1.5" style="width: 80px; padding: 6px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
+                                <input type="number" id="solar_threshold_1" name="solar_threshold_1" step="0.1" min="0.0" max="10.0" value="1.5" style="width: 80px; padding: 6px 10px; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
                                 <span style="font-size: 12px; color: #888; font-weight: 500;">kW</span>
                             </div>
                             <div style="display: flex; align-items: center; gap: 6px;">
                                 <label style="font-size: 13px; color: #666; font-weight: 600; min-width: 25px;">T<sub>2</sub>:</label>
-                                <input type="number" id="solar_threshold_2" name="solar_threshold_2" step="0.1" min="0.0" max="10.0" value="3.0" style="width: 80px; padding: 6px 10px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
+                                <input type="number" id="solar_threshold_2" name="solar_threshold_2" step="0.1" min="0.0" max="10.0" value="3.0" style="width: 80px; padding: 6px 10px; border-radius: 6px; font-size: 14px; text-align: center; font-weight: 500;">
                                 <span style="font-size: 12px; color: #888; font-weight: 500;">kW</span>
                             </div>
                         </div>
@@ -219,12 +238,6 @@
                         <input type="color" id="color_warning" name="color_warning" value="#FF0000" style="width: 100%; height: 50px; cursor: pointer;">
                         <small>value ≥ T2 (default: red)</small>
                     </div>
-                </div>
-                <div class="form-group" style="margin-top: 20px;">
-                    <button type="button" id="restore-defaults-btn" class="btn btn-secondary" style="width: 100%;">
-                        🔄 Restore Factory Defaults
-                    </button>
-                    <small>Reset all thresholds and colors to factory defaults</small>
                 </div>
             </section>
 

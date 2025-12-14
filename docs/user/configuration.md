@@ -75,12 +75,25 @@ Configure MQTT connection:
 Configure the topics to subscribe to for power data:
 
 - **Solar Power Topic**: e.g., `home/solar/power`
-  - Must publish power in **kilowatts (kW)** as plain float value
-  - Example message: `2.5` = 2.5 kW
+  - Must publish power in **kilowatts (kW)**
+  - Default format: direct numeric value (e.g., `2.5`)
+  
+- **Solar Value Path**: How to extract value from message
+  - Enter `.` for direct numeric values (default)
+  - Enter field name for JSON (e.g., `value`, `power`, `state`)
   
 - **Grid Power Topic**: e.g., `home/grid/power`
-  - Must publish JSON with `value` field in **kilowatts (kW)**
-  - Example message: `{"value": 1.2}` = 1.2 kW
+  - Must publish power in **kilowatts (kW)**
+  - Default format: direct numeric value (e.g., `1.2`)
+  
+- **Grid Value Path**: How to extract value from message
+  - Enter `.` for direct numeric values (default)
+  - Enter field name for JSON (e.g., `value` for `{"value": 1.2}`)
+
+**Examples**:
+- Direct value: Topic publishes `2.5` → Value Path: `.`
+- JSON field: Topic publishes `{"value": 2.5}` → Value Path: `value`
+- Custom field: Topic publishes `{"power": 2.5}` → Value Path: `power`
 
 See [mqtt-integration.md](mqtt-integration.md) for Home Assistant examples.
 

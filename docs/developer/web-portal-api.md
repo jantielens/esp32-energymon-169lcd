@@ -222,6 +222,8 @@ Returns current device configuration (passwords excluded for security).
   "mqtt_password": "",
   "mqtt_topic_solar": "home/solar/power",
   "mqtt_topic_grid": "home/grid/power",
+  "mqtt_solar_value_path": ".",
+  "mqtt_grid_value_path": ".",
   "lcd_brightness": 100,
   "grid_threshold_0": 0.0,
   "grid_threshold_1": 0.5,
@@ -242,6 +244,7 @@ Returns current device configuration (passwords excluded for security).
 **Notes:**
 - Passwords always return empty string (security)
 - `device_name_sanitized`: Read-only, auto-generated for mDNS
+- `mqtt_solar_value_path` / `mqtt_grid_value_path`: JSON field name or `.` for direct values
 - Color values are RGB565 format as decimal integers
 - Empty strings indicate field not set (using defaults)
 
@@ -275,6 +278,8 @@ Save new configuration. Device reboots after successful save (unless `no_reboot`
   "mqtt_password": "secret",
   "mqtt_topic_solar": "home/solar/power",
   "mqtt_topic_grid": "home/grid/power",
+  "mqtt_solar_value_path": ".",
+  "mqtt_grid_value_path": "value",
   "lcd_brightness": 75,
   "grid_threshold_0": 0.0,
   "grid_threshold_1": 0.5,
@@ -291,6 +296,10 @@ Save new configuration. Device reboots after successful save (unless `no_reboot`
   "color_warning": 16711680
 }
 ```
+
+**Value Path Options:**
+- `mqtt_solar_value_path`: `.` for direct values, or JSON field name (e.g., `power`)
+- `mqtt_grid_value_path`: `.` for direct values, or JSON field name (e.g., `value`)
 
 **Query Parameters:**
 - `no_reboot=1`: Skip automatic reboot after saving

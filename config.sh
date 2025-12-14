@@ -47,7 +47,7 @@ PROJECT_DISPLAY_NAME="ESP32 Energy Monitor"
 #   ["esp32:esp32:esp32c6:CDCOnBoot=cdc"]="esp32c6supermini"            # C6 with USB CDC enabled (generic Super Mini variant)
 declare -A FQBN_TARGETS=(
     ["esp32:esp32:esp32:PartitionScheme=min_spiffs"]="esp32"
-    ["esp32:esp32:nologo_esp32c3_super_mini:PartitionScheme=huge_app,CDCOnBoot=default"]="esp32c3"
+    ["esp32:esp32:nologo_esp32c3_super_mini:PartitionScheme=ota_1_9mb,CDCOnBoot=default"]="esp32c3"
 )
 
 # Default board (used when only one board is configured)

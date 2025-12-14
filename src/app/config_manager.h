@@ -25,7 +25,6 @@
 #define CONFIG_PASSWORD_MAX_LEN 64
 #define CONFIG_DEVICE_NAME_MAX_LEN 32
 #define CONFIG_IP_STR_MAX_LEN 16
-#define CONFIG_DUMMY_MAX_LEN 64
 #define CONFIG_MQTT_BROKER_MAX_LEN 64
 #define CONFIG_MQTT_USERNAME_MAX_LEN 32
 #define CONFIG_MQTT_PASSWORD_MAX_LEN 64
@@ -47,9 +46,6 @@ struct DeviceConfig {
     char dns1[CONFIG_IP_STR_MAX_LEN];
     char dns2[CONFIG_IP_STR_MAX_LEN];
     
-    // Dummy setting (example for extensibility)
-    char dummy_setting[CONFIG_DUMMY_MAX_LEN];
-    
     // MQTT settings
     char mqtt_broker[CONFIG_MQTT_BROKER_MAX_LEN];
     uint16_t mqtt_port;
@@ -57,6 +53,8 @@ struct DeviceConfig {
     char mqtt_password[CONFIG_MQTT_PASSWORD_MAX_LEN];
     char mqtt_topic_solar[CONFIG_MQTT_TOPIC_MAX_LEN];
     char mqtt_topic_grid[CONFIG_MQTT_TOPIC_MAX_LEN];
+    char mqtt_solar_value_path[32];  // JSON path or "." for direct number (e.g., "value", "power")
+    char mqtt_grid_value_path[32];   // JSON path or "." for direct number
     
     // LCD settings
     uint8_t lcd_brightness;  // 0-100%, default 100

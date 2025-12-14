@@ -11,6 +11,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.0] - 2025-12-14
+
+### Added
+- **Configurable MQTT Value Extraction**: Flexible message format support
+  - User-configurable value paths for solar and grid power topics
+  - Support for direct numeric values (default: `.`)
+  - Support for JSON field extraction (e.g., `value`, `power`, `state`)
+  - Covers 95% of Home Assistant MQTT sensor patterns
+  - Both topics default to direct numeric format (`.`) for simplicity
+  - Real-time parsing with ArduinoJson library
+  - Automatic NaN handling for parsing errors
+  - Empty value paths normalized to `.` on save
+  - Web portal fields with inline help text and examples
+
+### Changed
+- **Configuration Defaults**: All settings now initialized with sensible defaults
+  - Power thresholds: Grid [0.0, 0.5, 2.5], Home [0.5, 1.0, 2.0], Solar [0.5, 1.5, 3.0]
+  - Colors: Good=#00FF00, OK=#FFFFFF, Attention=#FFA500, Warning=#FF0000
+  - LCD brightness: 100%
+  - MQTT port: 1883
+  - MQTT value paths: `.` (direct numeric)
+  - Defaults applied on first boot and after factory reset
+  - Simplified app.ino initialization logic
+
+### Removed
+- **Partial Factory Reset**: Removed "Restore Factory Defaults" button from home page
+  - Only complete factory reset available (firmware page)
+  - Prevents confusion between partial and complete reset
+  - Users can manually restore individual settings as needed
+
+### Fixed
+- Web portal not displaying saved MQTT value path fields after page reload
+  - Added `setValueIfExists()` calls for `mqtt_solar_value_path` and `mqtt_grid_value_path`
+  - Values now properly loaded from API and displayed in form
+
+---
+
 ## [1.2.0] - 2025-12-13
 
 ### Added

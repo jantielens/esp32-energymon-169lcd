@@ -211,9 +211,6 @@ void handleGetConfig(AsyncWebServerRequest *request) {
     doc["dns1"] = current_config->dns1;
     doc["dns2"] = current_config->dns2;
     
-    // Dummy setting
-    doc["dummy_setting"] = current_config->dummy_setting;
-    
     // MQTT settings
     doc["mqtt_broker"] = current_config->mqtt_broker;
     doc["mqtt_port"] = current_config->mqtt_port;
@@ -221,6 +218,8 @@ void handleGetConfig(AsyncWebServerRequest *request) {
     doc["mqtt_password"] = ""; // Don't send password
     doc["mqtt_topic_solar"] = current_config->mqtt_topic_solar;
     doc["mqtt_topic_grid"] = current_config->mqtt_topic_grid;
+    doc["mqtt_solar_value_path"] = current_config->mqtt_solar_value_path;
+    doc["mqtt_grid_value_path"] = current_config->mqtt_grid_value_path;
     
     // LCD settings
     doc["lcd_brightness"] = current_config->lcd_brightness;
@@ -312,11 +311,6 @@ void handlePostConfig(AsyncWebServerRequest *request, uint8_t *data, size_t len,
         strlcpy(current_config->dns2, doc["dns2"] | "", CONFIG_IP_STR_MAX_LEN);
     }
     
-    // Dummy setting - only update if field exists
-    if (doc.containsKey("dummy_setting")) {
-        strlcpy(current_config->dummy_setting, doc["dummy_setting"] | "", CONFIG_DUMMY_MAX_LEN);
-    }
-    
     // MQTT settings - only update if fields exist
     if (doc.containsKey("mqtt_broker")) {
         strlcpy(current_config->mqtt_broker, doc["mqtt_broker"] | "", CONFIG_MQTT_BROKER_MAX_LEN);
@@ -339,6 +333,12 @@ void handlePostConfig(AsyncWebServerRequest *request, uint8_t *data, size_t len,
     }
     if (doc.containsKey("mqtt_topic_grid")) {
         strlcpy(current_config->mqtt_topic_grid, doc["mqtt_topic_grid"] | "", CONFIG_MQTT_TOPIC_MAX_LEN);
+    }
+    if (doc.containsKey("mqtt_solar_value_path")) {
+        strlcpy(current_config->mqtt_solar_value_path, doc["mqtt_solar_value_path"] | "", 32);
+    }
+    if (doc.containsKey("mqtt_grid_value_path")) {
+        strlcpy(current_config->mqtt_grid_value_path, doc["mqtt_grid_value_path"] | "", 32);
     }
     
     // LCD brightness - update both config and runtime, apply to hardware

@@ -25,6 +25,8 @@ static char mqtt_username[CONFIG_MQTT_USERNAME_MAX_LEN] = "";
 static char mqtt_password[CONFIG_MQTT_PASSWORD_MAX_LEN] = "";
 static char topic_solar[CONFIG_MQTT_TOPIC_MAX_LEN] = "";
 static char topic_grid[CONFIG_MQTT_TOPIC_MAX_LEN] = "";
+static char solar_value_path[32] = ".";
+static char grid_value_path[32] = ".";
 
 // Power values (NAN = not received yet)
 static float solar_power_kw = NAN;
@@ -33,6 +35,35 @@ static float grid_power_kw = NAN;
 // Connection retry settings
 static unsigned long last_reconnect_attempt = 0;
 static const unsigned long RECONNECT_INTERVAL = 5000; // 5 seconds
+
+/**
+ * Extract numeric value from MQTT payload
+ * @param payload - MQTT message payload (null-terminated string)
+ * @param path - JSON field path, or "." for direct numeric value
+ * @return Extracted float value, or NAN on error
+ */
+static float extract_value(const char* payload, const char* path) {
+    // Direct numeric value (no JSON parsing needed)
+    if (path[0] == '.' && path[1] == '\0') {
+        return atof(payload);
+    }
+    
+    // JSON field extraction
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, payload);
+    
+    if (error) {
+        Logger.logMessagef("MQTT", "Failed to parse JSON: %s", error.c_str());
+        return NAN;
+    }
+    
+    if (doc.containsKey(path)) {
+        return doc[path];
+    } else {
+        Logger.logMessagef("MQTT", "JSON missing field '%s'", path);
+        return NAN;
+    }
+}
 
 // MQTT callback for incoming messages
 void mqtt_callback(char* topic, byte* payload, unsigned int length) {
@@ -45,25 +76,15 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
     
     // Check which topic this message is from
     if (strcmp(topic, topic_solar) == 0) {
-        // Solar topic: Direct float value
-        solar_power_kw = atof(message);
-        Logger.logMessagef("MQTT", "Solar power updated: %.3f kW", solar_power_kw);
+        solar_power_kw = extract_value(message, solar_value_path);
+        if (!isnan(solar_power_kw)) {
+            Logger.logMessagef("MQTT", "Solar power updated: %.3f kW", solar_power_kw);
+        }
     } 
     else if (strcmp(topic, topic_grid) == 0) {
-        // Grid topic: JSON with "value" field
-        JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, message);
-        
-        if (error) {
-            Logger.logMessagef("MQTT", "Failed to parse grid JSON: %s", error.c_str());
-            return;
-        }
-        
-        if (doc.containsKey("value")) {
-            grid_power_kw = doc["value"];
+        grid_power_kw = extract_value(message, grid_value_path);
+        if (!isnan(grid_power_kw)) {
             Logger.logMessagef("MQTT", "Grid power updated: %.3f kW", grid_power_kw);
-        } else {
-            Logger.logMessage("MQTT", "Grid JSON missing 'value' field");
         }
     }
 }
@@ -129,6 +150,8 @@ void mqtt_manager_init(const DeviceConfig *config) {
     strlcpy(mqtt_password, config->mqtt_password, CONFIG_MQTT_PASSWORD_MAX_LEN);
     strlcpy(topic_solar, config->mqtt_topic_solar, CONFIG_MQTT_TOPIC_MAX_LEN);
     strlcpy(topic_grid, config->mqtt_topic_grid, CONFIG_MQTT_TOPIC_MAX_LEN);
+    strlcpy(solar_value_path, config->mqtt_solar_value_path, 32);
+    strlcpy(grid_value_path, config->mqtt_grid_value_path, 32);
     
     // Skip if no broker configured
     if (strlen(mqtt_broker) == 0) {
@@ -139,8 +162,8 @@ void mqtt_manager_init(const DeviceConfig *config) {
     Logger.logBegin("MQTT Init");
     Logger.logLinef("Broker: %s:%d", mqtt_broker, mqtt_port);
     Logger.logLinef("Username: %s", strlen(mqtt_username) > 0 ? mqtt_username : "(none)");
-    Logger.logLinef("Solar topic: %s", strlen(topic_solar) > 0 ? topic_solar : "(none)");
-    Logger.logLinef("Grid topic: %s", strlen(topic_grid) > 0 ? topic_grid : "(none)");
+    Logger.logLinef("Solar topic: %s (path: %s)", strlen(topic_solar) > 0 ? topic_solar : "(none)", solar_value_path);
+    Logger.logLinef("Grid topic: %s (path: %s)", strlen(topic_grid) > 0 ? topic_grid : "(none)", grid_value_path);
     Logger.logEnd();
     
     // Configure MQTT client

@@ -95,24 +95,16 @@ void setup()
   // Initialize configuration manager
   config_manager_init();
   
-  // Try to load saved configuration
+  // Try to load saved configuration (defaults always applied)
   config_loaded = config_manager_load(&device_config);
   
   #if HAS_DISPLAY
   display_set_boot_progress(20, "Config loaded");
   
-  // Apply saved LCD brightness (or default 100%)
-  lcd_set_backlight(config_loaded ? device_config.lcd_brightness : 100);
-  Logger.logMessagef("Main", "LCD brightness: %d%%", config_loaded ? device_config.lcd_brightness : 100);
+  // Apply LCD brightness from config (default 100% if no config)
+  lcd_set_backlight(device_config.lcd_brightness);
+  Logger.logMessagef("Main", "LCD brightness: %d%%", device_config.lcd_brightness);
   #endif
-  
-  if (!config_loaded) {
-    // No config found - set default device name
-    String default_name = config_manager_get_default_device_name();
-    strlcpy(device_config.device_name, default_name.c_str(), CONFIG_DEVICE_NAME_MAX_LEN);
-    device_config.lcd_brightness = 100; // Default to maximum
-    device_config.magic = CONFIG_MAGIC;
-  }
   
   // Start WiFi BEFORE initializing web server (critical for ESP32-C3)
   if (!config_loaded) {
