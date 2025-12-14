@@ -71,13 +71,28 @@ Place `partitions_ota_1_9mb.csv` in the project root.
 
 ### 2. Install to Arduino ESP32 package
 
-The partition file must be copied to the ESP32 Arduino package directory:
+The partition file must be copied to the ESP32 Arduino package directory and registered in `boards.txt`:
 
 ```bash
+# Copy partition file
 cp partitions_ota_1_9mb.csv ~/.arduino15/packages/esp32/hardware/esp32/*/tools/partitions/
+
+# Register partition scheme in boards.txt
+ESP32_DIR=$(find ~/.arduino15/packages/esp32/hardware/esp32 -maxdepth 1 -type d | tail -1)
+cat >> "$ESP32_DIR/boards.txt" << 'EOF'
+
+# Custom OTA partition scheme
+nologo_esp32c3_super_mini.menu.PartitionScheme.ota_1_9mb=Custom OTA (1.9MB APP×2)
+nologo_esp32c3_super_mini.menu.PartitionScheme.ota_1_9mb.build.partitions=partitions_ota_1_9mb
+nologo_esp32c3_super_mini.menu.PartitionScheme.ota_1_9mb.upload.maximum_size=1966080
+EOF
 ```
 
-> **Note**: This step is required because the build system looks for partition files in the package directory, not the project directory.
+> **Note**: Both steps are required because:
+> 1. The partition file defines the memory layout
+> 2. `boards.txt` registration makes it available as a build option in the FQBN
+
+> **Important**: This registration is **automatically handled** by the GitHub Actions workflow for CI/CD builds. Manual installation is only needed for local development environments.
 
 ### 3. Configure the board FQBN
 
