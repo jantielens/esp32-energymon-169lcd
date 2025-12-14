@@ -91,6 +91,37 @@ jobs:
         chmod +x setup.sh
         ./setup.sh
     
+    - name: Install custom partition table
+      run: |
+        # Find ESP32 package directory
+        ESP32_DIR=$(find ~/.arduino15/packages/esp32/hardware/esp32 -maxdepth 1 -type d | tail -1)
+        
+        # Copy custom partition file
+        PARTITION_FILE="partitions_ota_1_9mb.csv"
+        if [ -f "$PARTITION_FILE" ]; then
+          PARTITION_DIR="$ESP32_DIR/tools/partitions"
+          if [ -d "$PARTITION_DIR" ]; then
+            cp "$PARTITION_FILE" "$PARTITION_DIR/"
+            echo "✓ Installed $PARTITION_FILE to $PARTITION_DIR"
+          fi
+        fi
+        
+        # Register partition scheme in boards.txt
+        BOARDS_TXT="$ESP32_DIR/boards.txt"
+        if [ -f "$BOARDS_TXT" ]; then
+          # Check if already registered (idempotent)
+          if ! grep -q "ota_1_9mb" "$BOARDS_TXT"; then
+            echo "" >> "$BOARDS_TXT"
+            echo "# Custom OTA partition scheme" >> "$BOARDS_TXT"
+            echo "nologo_esp32c3_super_mini.menu.PartitionScheme.ota_1_9mb=Custom OTA (1.9MB APP×2)" >> "$BOARDS_TXT"
+            echo "nologo_esp32c3_super_mini.menu.PartitionScheme.ota_1_9mb.build.partitions=partitions_ota_1_9mb" >> "$BOARDS_TXT"
+            echo "nologo_esp32c3_super_mini.menu.PartitionScheme.ota_1_9mb.upload.maximum_size=1966080" >> "$BOARDS_TXT"
+            echo "✓ Registered ota_1_9mb partition scheme in boards.txt"
+          else
+            echo "✓ Partition scheme already registered"
+          fi
+        fi
+    
     - name: Compile firmware for ${{ matrix.board.name }}
       run: |
         chmod +x build.sh
