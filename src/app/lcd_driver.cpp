@@ -71,6 +71,23 @@ void lcd_push_colors(uint16_t *data, uint32_t len) {
     digitalWrite(LCD_CS_PIN, HIGH);
 }
 
+void lcd_push_pixels_at(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t *pixels) {
+    // Set window to target area
+    lcd_set_window(x, y, x + w - 1, y + h - 1);
+    
+    // Push pixel data
+    digitalWrite(LCD_DC_PIN, HIGH);
+    digitalWrite(LCD_CS_PIN, LOW);
+    
+    uint32_t total = (uint32_t)w * h;
+    for (uint32_t i = 0; i < total; i++) {
+        spi->transfer((uint8_t)(pixels[i] >> 8));
+        spi->transfer((uint8_t)(pixels[i] & 0xFF));
+    }
+    
+    digitalWrite(LCD_CS_PIN, HIGH);
+}
+
 void lcd_init() {
     pinMode(LCD_CS_PIN, OUTPUT);
     pinMode(LCD_DC_PIN, OUTPUT);

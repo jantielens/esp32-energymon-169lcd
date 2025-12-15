@@ -15,12 +15,15 @@
 #include "log_manager.h"
 #include "lcd_driver.h"
 #include "display_manager.h"
+#include "board_config.h"
 #include "../version.h"
 #include <ESPAsyncWebServer.h>
 #include <DNSServer.h>
 #include <WiFi.h>
 #include <ArduinoJson.h>
 #include <Update.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 // Temperature sensor support (ESP32-C3, ESP32-S2, ESP32-S3, ESP32-C2, ESP32-C6, ESP32-H2)
 #if SOC_TEMP_SENSOR_SUPPORTED
@@ -46,6 +49,7 @@ void handleGetBrightness(AsyncWebServerRequest *request);
 void handlePostBrightness(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total);
 void handleImageUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final);
 void handleImageDelete(AsyncWebServerRequest *request);
+void handleStripUpload(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total);
 
 // Web server on port 80 (pointer to avoid constructor issues)
 AsyncWebServer *server = nullptr;
@@ -91,6 +95,12 @@ struct PendingImageOp {
     unsigned long start_time;  // Time when upload completed (for accurate timeout)
 };
 static volatile PendingImageOp pending_image_op = {nullptr, 0, false, 10000, 0};
+
+// Current strip being uploaded (stateless - metadata comes with each request)
+static uint8_t* current_strip_buffer = nullptr;
+static size_t current_strip_size = 0;
+static int current_strip_index = -1;
+static int current_strip_total = 0;
 
 // CPU usage tracking
 static uint32_t last_idle_runtime = 0;
@@ -1001,6 +1011,151 @@ void handleImageDelete(AsyncWebServerRequest *request) {
     request->send(200, "application/json", "{\"success\":true,\"message\":\"Image dismiss queued\"}");
 }
 
+// POST /api/display/strip?index=N&total=T&width=W&height=H[&timeout=MS] - Upload single strip (stateless/atomic)
+void handleStripUpload(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+    // Extract required metadata from query parameters
+    if (!request->hasParam("index") || !request->hasParam("total") || 
+        !request->hasParam("width") || !request->hasParam("height")) {
+        if (index + len >= total) {  // Final chunk
+            request->send(400, "application/json", "{\"success\":false,\"message\":\"Missing required parameters: index, total, width, height\"}");
+        }
+        return;
+    }
+    
+    int stripIndex = request->getParam("index")->value().toInt();
+    int totalStrips = request->getParam("total")->value().toInt();
+    int imageWidth = request->getParam("width")->value().toInt();
+    int imageHeight = request->getParam("height")->value().toInt();
+    unsigned long timeoutMs = request->hasParam("timeout") ? 
+        request->getParam("timeout")->value().toInt() * 1000 : 10000;
+    
+    if (index == 0) {
+        // First chunk of this strip
+        Logger.logBegin("Strip Upload");
+        Logger.logLinef("Strip %d/%d, size: %u bytes, image: %dx%d", 
+                       stripIndex, totalStrips - 1, total, imageWidth, imageHeight);
+        
+        // Validate parameters
+        if (stripIndex < 0 || stripIndex >= totalStrips) {
+            Logger.logEnd("ERROR: Invalid strip index");
+            request->send(400, "application/json", "{\"success\":false,\"message\":\"Invalid strip index\"}");
+            return;
+        }
+        
+        if (imageWidth <= 0 || imageHeight <= 0 || imageWidth > LCD_WIDTH || imageHeight > LCD_HEIGHT) {
+            Logger.logLinef("ERROR: Invalid dimensions %dx%d", imageWidth, imageHeight);
+            Logger.logEnd();
+            request->send(400, "application/json", "{\"success\":false,\"message\":\"Invalid image dimensions\"}");
+            return;
+        }
+        
+        // Initialize display session on first strip
+        if (stripIndex == 0) {
+            Logger.logLinef("First strip - initializing display session");
+            if (!display_start_strip_upload(imageWidth, imageHeight, timeoutMs, millis())) {
+                Logger.logEnd("ERROR: Failed to initialize display");
+                request->send(500, "application/json", "{\"success\":false,\"message\":\"Failed to initialize display\"}");
+                return;
+            }
+        }
+        
+        // Free any previous strip buffer
+        if (current_strip_buffer) {
+            free((void*)current_strip_buffer);
+            current_strip_buffer = nullptr;
+        }
+        
+        // Allocate buffer for this strip
+        current_strip_buffer = (uint8_t*)malloc(total);
+        
+        if (!current_strip_buffer) {
+            Logger.logLinef("ERROR: Out of memory (requested %u bytes, free heap: %u)", 
+                           total, ESP.getFreeHeap());
+            Logger.logEnd();
+            request->send(507, "application/json", "{\"success\":false,\"message\":\"Out of memory\"}");
+            return;
+        }
+        
+        Logger.logLinef("Allocated %u bytes at %p (free heap: %u)", 
+                       total, current_strip_buffer, ESP.getFreeHeap());
+        
+        current_strip_size = 0;
+        current_strip_index = stripIndex;
+    }
+    
+    // Accumulate strip data
+    if (current_strip_buffer && current_strip_size + len <= total) {
+        memcpy((uint8_t*)current_strip_buffer + current_strip_size, data, len);
+        current_strip_size += len;
+    }
+    
+    // Check if this is the final chunk - decode synchronously before returning
+    if (index + len >= total) {
+        Logger.logLinef("Strip %d complete: %u bytes received (expected %u)", 
+                       stripIndex, current_strip_size, total);
+        
+        // Verify we received all data
+        if (current_strip_size != total) {
+            Logger.logLinef("ERROR: Size mismatch! Received %u, expected %u", 
+                           current_strip_size, total);
+            free((void*)current_strip_buffer);
+            current_strip_buffer = nullptr;
+            Logger.logEnd();
+            request->send(500, "application/json", "{\"success\":false,\"message\":\"Incomplete upload\"}");
+            return;
+        }
+        
+        // Validate JPEG header (SOI marker: 0xFFD8)
+        if (current_strip_size < 2 || 
+            current_strip_buffer[0] != 0xFF || 
+            current_strip_buffer[1] != 0xD8) {
+            Logger.logLinef("ERROR: Invalid JPEG header: 0x%02X%02X (expected 0xFFD8)", 
+                           current_strip_buffer[0], current_strip_buffer[1]);
+            free((void*)current_strip_buffer);
+            current_strip_buffer = nullptr;
+            Logger.logEnd();
+            request->send(500, "application/json", "{\"success\":false,\"message\":\"Invalid JPEG data\"}");
+            return;
+        }
+        
+        // Decode strip synchronously (device pointer bug is fixed)
+        bool success = display_decode_strip(
+            current_strip_buffer,
+            current_strip_size,
+            stripIndex
+        );
+        
+        // Free the buffer after decoding
+        free((void*)current_strip_buffer);
+        current_strip_buffer = nullptr;
+        current_strip_size = 0;
+        
+        bool is_last = (stripIndex == totalStrips - 1);
+        
+        if (!success) {
+            Logger.logLinef("ERROR: Failed to decode strip %d", stripIndex);
+            Logger.logEnd();
+            request->send(500, "application/json", "{\"success\":false,\"message\":\"Decode failed\"}");
+            return;
+        }
+        
+        Logger.logLinef("✓ Strip %d decoded", stripIndex);
+        
+        if (is_last) {
+            Logger.logLinef("✓ All %d strips uploaded and decoded", totalStrips);
+        }
+        
+        Logger.logLinef("Progress: %d/%d", stripIndex + 1, totalStrips);
+        Logger.logEnd();
+        
+        char response[128];
+        snprintf(response, sizeof(response), 
+                 "{\"success\":true,\"strip\":%d,\"total\":%d,\"complete\":%s}", 
+                 stripIndex, totalStrips, is_last ? "true" : "false");
+        request->send(200, "application/json", response);
+    }
+}
+
 // ===== PUBLIC API =====
 
 // Initialize web portal
@@ -1075,6 +1230,18 @@ void web_portal_init(DeviceConfig *config) {
     );
     
     server->on("/api/display/image", HTTP_DELETE, handleImageDelete);
+    
+    // Strip-by-strip image display endpoint (stateless/atomic)
+    // URL format: /api/display/strip?index=N&total=T&width=W&height=H[&timeout=MS]
+    // Each request is self-contained with all metadata
+    // Uses body handler since we're sending raw binary data
+    server->on(
+        "/api/display/strip",
+        HTTP_POST,
+        [](AsyncWebServerRequest *request) {},
+        NULL,  // No file upload handler
+        handleStripUpload  // Body handler for raw binary data
+    );
     
     // 404 handler
     server->onNotFound([](AsyncWebServerRequest *request) {
@@ -1158,6 +1325,7 @@ bool web_portal_ota_in_progress() {
 void web_portal_process_pending() {
     static unsigned long last_processed_id = 0;
     
+    // Process regular image upload (existing code)
     // Only process if upload is ready and no OTA in progress
     if (upload_state != UPLOAD_READY_TO_DISPLAY || ota_in_progress) {
         return;

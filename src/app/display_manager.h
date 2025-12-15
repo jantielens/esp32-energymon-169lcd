@@ -24,4 +24,9 @@ void display_update_energy(float solar_kw, float grid_kw);
 bool display_show_image(const uint8_t* jpeg_data, size_t jpeg_size, unsigned long timeout_ms = 10000, unsigned long start_time = 0);
 void display_hide_image();  // Manual dismiss (also called automatically after timeout)
 
+// Strip-based image display API (memory-efficient streaming)
+bool display_start_strip_upload(uint16_t width, uint16_t height, unsigned long timeout_ms = 10000, unsigned long start_time = 0);
+bool display_decode_strip(const uint8_t* jpeg_data, size_t jpeg_size, uint8_t strip_index);
+void display_hide_strip_image();
+
 #endif // DISPLAY_MANAGER_H

@@ -18,4 +18,7 @@ void lcd_set_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1);
 void lcd_fill_screen(uint16_t color);
 void lcd_push_colors(uint16_t *data, uint32_t len);
 
+// Direct pixel writing for strip-based image display (bypasses LVGL)
+void lcd_push_pixels_at(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint16_t *pixels);
+
 #endif // LCD_DRIVER_H

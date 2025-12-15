@@ -1,8 +1,10 @@
 #include "display_manager.h"
 #include "lcd_driver.h"
+#include "log_manager.h"
 #include "screen_splash.h"
 #include "screen_power.h"
 #include "screen_image.h"
+#include "screen_direct_image.h"
 #include <math.h>
 
 static lv_disp_draw_buf_t draw_buf;
@@ -14,6 +16,7 @@ static lv_disp_drv_t disp_drv;
 static SplashScreen* splash_screen = nullptr;
 static PowerScreen* power_screen = nullptr;
 static ImageScreen* image_screen = nullptr;
+static DirectImageScreen* direct_image_screen = nullptr;
 static ScreenBase* current_screen = nullptr;
 static ScreenBase* previous_screen = nullptr;  // Track previous screen for return after image timeout
 
@@ -119,6 +122,11 @@ void display_update() {
     // Check image screen timeout (10 seconds)
     if (image_screen && current_screen == image_screen && image_screen->is_timeout_expired()) {
         display_hide_image();
+    }
+    
+    // Check direct image screen timeout (strip-based display)
+    if (direct_image_screen && current_screen == direct_image_screen && direct_image_screen->is_timeout_expired()) {
+        display_hide_strip_image();
     }
 }
 
@@ -232,6 +240,77 @@ void display_hide_image() {
     if (image_screen) {
         image_screen->hide();
         image_screen->clear_image();
+    }
+    
+    // Return to previous screen (or power screen if no previous)
+    if (previous_screen) {
+        previous_screen->show();
+        current_screen = previous_screen;
+        previous_screen = nullptr;
+    } else if (power_screen) {
+        display_show_power_screen();
+    }
+    
+    // Force multiple render cycles to ensure screen switch completes
+    // and power screen widgets are fully redrawn
+    for (int i = 0; i < 5; i++) {
+        lv_timer_handler();
+        delay(5);
+    }
+}
+
+bool display_start_strip_upload(uint16_t width, uint16_t height, unsigned long timeout_ms, unsigned long start_time) {
+    // Create direct image screen on first use
+    if (!direct_image_screen) {
+        direct_image_screen = new DirectImageScreen();
+        direct_image_screen->create();
+    }
+    
+    // Set the display timeout and start time
+    direct_image_screen->set_timeout(timeout_ms);
+    if (start_time > 0) {
+        direct_image_screen->set_start_time(start_time);
+    }
+    
+    // Initialize strip decoding session
+    direct_image_screen->begin_strip_session(width, height);
+    
+    // Save current screen for return after timeout
+    previous_screen = current_screen;
+    
+    // Show direct image screen (blank black screen)
+    // This sets visible=true, which blocks PowerScreen widget rendering
+    direct_image_screen->show();
+    current_screen = direct_image_screen;
+    
+    // Force multiple render cycles to ensure screen switch completes
+    for (int i = 0; i < 3; i++) {
+        lv_timer_handler();
+        delay(5);
+    }
+    
+    return true;
+}
+
+bool display_decode_strip(const uint8_t* jpeg_data, size_t jpeg_size, uint8_t strip_index) {
+    if (!direct_image_screen) {
+        Logger.logMessage("ERROR", "display_decode_strip: direct_image_screen is NULL");
+        return false;
+    }
+    
+    if (current_screen != direct_image_screen) {
+        Logger.logMessagef("ERROR", "display_decode_strip: current_screen mismatch (current=%p, expected=%p)", 
+                          current_screen, direct_image_screen);
+        return false;
+    }
+    
+    // Decode and render the strip directly to LCD
+    return direct_image_screen->decode_strip(jpeg_data, jpeg_size, strip_index);
+}
+
+void display_hide_strip_image() {
+    if (direct_image_screen) {
+        direct_image_screen->hide();
     }
     
     // Return to previous screen (or power screen if no previous)

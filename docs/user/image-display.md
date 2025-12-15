@@ -123,15 +123,18 @@ python3 tools/test_image_api.py 192.168.1.100 photo.jpg
 
 - **Format**: JPEG (.jpg, .jpeg)
 - **Size**: Under 50KB recommended, 100KB maximum
-- **Resolution**: 240×280 pixels (matches screen exactly)
+- **Resolution**: 240×280 pixels (physical display dimensions)
 - **Color**: RGB color (24-bit)
 - **Quality**: 70-80% JPEG quality provides good balance
+
+**Note:** The display is physically 240×280 pixels but runs in landscape mode (rotated 90°). Images are automatically rotated by the firmware - upload in **240×280 portrait** dimensions and they will display as **280×240 landscape**.
 
 ### Creating Compatible Images
 
 **Using ImageMagick:**
 ```bash
-# Resize and optimize for device
+# Resize to 240×280 (physical dimensions)
+# Firmware automatically rotates to 280×240 landscape
 convert input.jpg -resize 240x280 -quality 75 output.jpg
 ```
 
@@ -140,6 +143,7 @@ convert input.jpg -resize 240x280 -quality 75 output.jpg
 from PIL import Image
 
 img = Image.open('input.jpg')
+# Resize to physical dimensions (240×280)
 img = img.resize((240, 280), Image.LANCZOS)
 img.save('output.jpg', 'JPEG', quality=75, optimize=True)
 ```

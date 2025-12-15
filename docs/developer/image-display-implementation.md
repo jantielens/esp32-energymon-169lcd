@@ -988,6 +988,45 @@ exec(`./tools/jpg2sjpg.sh photo.jpg photo.sjpg`, (err) => {
 
 ## Lessons Learned
 
+### Display Rotation Handling
+
+**Insight:** LVGL's `sw_rotate` setting automatically rotates rendered content, including images.
+
+**How it works:**
+```cpp
+// board_config.h
+#define LCD_ROTATION 1  // 0=portrait, 1=landscape (90°), 2=180°, 3=270°
+
+// display_manager.cpp
+#if LCD_ROTATION == 1
+    disp_drv.sw_rotate = 1;
+    disp_drv.rotated = LV_DISP_ROT_90;
+#endif
+```
+
+**For image upload:**
+- Images displayed via `lv_img_set_src()` are **automatically rotated** by LVGL
+- Upload images in **physical display dimensions** (240×280 for portrait display)
+- LVGL rotates to match `LCD_ROTATION` setting (e.g., 280×240 landscape)
+- No manual rotation needed in image preparation
+
+**Example:**
+```bash
+# Display hardware: 240×280 pixels (portrait orientation)
+# LCD_ROTATION: 1 (90° landscape mode)
+# Logical resolution: 280×240 (landscape)
+
+# ✅ Correct - upload in physical dimensions
+convert photo.jpg -resize 240x280 output.jpg
+python3 upload_image.py 192.168.1.111 output.jpg --mode single
+
+# LVGL automatically rotates 240×280 → 280×240 landscape ✅
+```
+
+**Note:** Strip-based upload (direct LCD write) **does NOT** use LVGL rotation - pixels are written exactly as provided. See [strip-upload-implementation.md](strip-upload-implementation.md) for details.
+
+---
+
 ### Memory Management
 
 **Insight:** On ESP32-C3 with ~80KB free RAM, choose formats that minimize decode overhead.
