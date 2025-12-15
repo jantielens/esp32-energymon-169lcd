@@ -11,6 +11,7 @@
 static const uint8_t* vfs_jpeg_data = nullptr;
 static size_t vfs_jpeg_size = 0;
 static size_t vfs_jpeg_pos = 0;
+static volatile bool vfs_busy = false;  // Atomic flag to prevent concurrent access
 
 // LVGL file system callbacks for memory-based JPEG
 static void* fs_open_cb(lv_fs_drv_t* drv, const char* path, lv_fs_mode_t mode) {
@@ -150,6 +151,12 @@ bool ImageScreen::load_image(const uint8_t* jpeg_data, size_t jpeg_size) {
         return false;
     }
     
+    // Check if VFS is busy (another operation in progress)
+    if (vfs_busy) {
+        Logger.logMessage("ImageScreen", "ERROR: VFS busy, cannot load image");
+        return false;
+    }
+    
     Logger.logBegin("Load Image");
     Logger.logLinef("Size: %u bytes", jpeg_size);
     Logger.logLinef("Free heap before: %u bytes", ESP.getFreeHeap());
@@ -160,9 +167,13 @@ bool ImageScreen::load_image(const uint8_t* jpeg_data, size_t jpeg_size) {
     // Clear any existing image
     clear_image();
     
+    // Mark VFS as busy
+    vfs_busy = true;
+    
     // Allocate buffer for image data
     image_buffer = (uint8_t*)malloc(jpeg_size);
     if (!image_buffer) {
+        vfs_busy = false;
         Logger.logEnd("ERROR: Out of memory");
         return false;
     }
@@ -197,6 +208,9 @@ bool ImageScreen::load_image(const uint8_t* jpeg_data, size_t jpeg_size) {
     Logger.logLinef("Free heap after: %u bytes", ESP.getFreeHeap());
     Logger.logEnd("Image loaded successfully");
     
+    // Keep vfs_busy = true while image is displayed
+    // Will be cleared in clear_image()
+    
     return true;
 }
 
@@ -205,6 +219,7 @@ void ImageScreen::clear_image() {
     vfs_jpeg_data = nullptr;
     vfs_jpeg_size = 0;
     vfs_jpeg_pos = 0;
+    vfs_busy = false;  // Release VFS for next operation
     
     if (image_buffer) {
         Logger.logMessagef("ImageScreen", "Freeing image buffer (%u bytes)", buffer_size);

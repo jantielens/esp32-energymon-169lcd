@@ -155,8 +155,11 @@ void display_show_power_screen() {
         lv_obj_align(fps_label, LV_ALIGN_BOTTOM_RIGHT, -15, -5);  // 10px from corner
 #endif
         
-        // Force update
-        lv_timer_handler();
+        // Force multiple render cycles to ensure complete screen redraw
+        for (int i = 0; i < 3; i++) {
+            lv_timer_handler();
+            delay(5);
+        }
     }
 }
 
@@ -209,6 +212,13 @@ bool display_show_image(const uint8_t* jpeg_data, size_t jpeg_size) {
     image_screen->show();
     current_screen = image_screen;
     
+    // Force multiple render cycles to ensure screen switch completes
+    // SJPEG decoding may span multiple lv_timer_handler calls
+    for (int i = 0; i < 5; i++) {
+        lv_timer_handler();
+        delay(5);
+    }
+    
     return true;
 }
 
@@ -227,6 +237,10 @@ void display_hide_image() {
         display_show_power_screen();
     }
     
-    // Force update
-    lv_timer_handler();
+    // Force multiple render cycles to ensure screen switch completes
+    // and power screen widgets are fully redrawn
+    for (int i = 0; i < 5; i++) {
+        lv_timer_handler();
+        delay(5);
+    }
 }

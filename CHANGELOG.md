@@ -11,6 +11,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.0] - 2025-12-15
+
+### Added
+- **Image Display API**: Display temporary images on the LCD via HTTP upload
+  - `POST /api/display/image` - Upload JPEG/SJPG images (max 100KB)
+  - `DELETE /api/display/image` - Manually dismiss current image
+  - Support for standard JPEG and Split JPEG (SJPG) formats
+  - Images display for 10 seconds with automatic timeout
+  - Automatic return to power screen after dismissal
+  - Memory-efficient: SJPG format uses only ~35KB RAM for 280×240 images
+  - Thread-safe implementation using deferred operations pattern
+  - Concurrent upload handling: second upload waits up to 1s for first to complete
+  - Virtual filesystem (VFS) driver enables LVGL to decode images from RAM
+  - RGB↔BGR color conversion handled via preprocessing (jpg2sjpg.sh script)
+  - Validation: JPEG (0xFF 0xD8 0xFF) and SJPG (0x5F 0x53 0x4A 0x50) magic bytes
+  - Test script included: `tools/test-image-api.sh <ip> <image.jpg>`
+  - See [image-display-implementation.md](docs/developer/image-display-implementation.md) for technical details
+
+- **Deferred Operations Pattern**: Thread-safe LVGL access from AsyncWebServer
+  - HTTP handlers queue operations, main loop processes LVGL calls
+  - State machine: UPLOAD_IDLE → UPLOAD_IN_PROGRESS → UPLOAD_READY_TO_DISPLAY
+  - Operation ID counter prevents duplicate processing
+  - `web_portal_process_pending()` function in main loop handles queued operations
+  - Prevents race conditions from concurrent task access to LVGL (not thread-safe)
+  - VFS busy flag protects global pointers during image decoding
+
+- **PowerScreen Visibility Checks**: Widgets only updated when screen is visible
+  - Prevents race conditions during screen switches
+  - Statistics tracking continues in background even when screen hidden
+  - Applied to: `set_solar_power`, `set_grid_power`, `update_home_value`, `update_bar_charts`, `update_power_colors`, `update_stat_overlays`
+
+- **Screen Switching Synchronization**: Reliable display during transitions
+  - Multiple `lv_timer_handler()` calls ensure complete screen redraw
+  - Handles split JPEG progressive decoding across multiple frames
+  - Prevents white screen or partial rendering issues
+
+- **Comprehensive Documentation**: Full technical guide for image display implementation
+  - Architecture diagrams and memory analysis
+  - Format comparison (JPEG vs PNG vs SJPG)
+  - Color space handling (RGB vs BGR for ST7789V2)
+  - Concurrency solutions and debugging guide
+  - Troubleshooting appendix with common issues
+  - Located at `docs/developer/image-display-implementation.md`
+
+---
+
 ## [1.3.0] - 2025-12-14
 
 ### Added

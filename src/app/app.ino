@@ -183,6 +183,9 @@ void loop()
   // Handle web portal (DNS for captive portal)
   web_portal_handle();
   
+  // Process pending image operations from web portal (deferred to avoid LVGL race conditions)
+  web_portal_process_pending();
+  
   // Handle MQTT messages
   mqtt_manager_loop();
 

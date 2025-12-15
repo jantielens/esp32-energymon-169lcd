@@ -72,6 +72,23 @@ static uint8_t* image_upload_buffer = nullptr;
 static size_t image_upload_size = 0;
 static const size_t MAX_IMAGE_SIZE = 100 * 1024;  // 100KB limit
 
+// Upload state tracking
+enum UploadState {
+    UPLOAD_IDLE = 0,
+    UPLOAD_IN_PROGRESS,
+    UPLOAD_READY_TO_DISPLAY
+};
+static volatile UploadState upload_state = UPLOAD_IDLE;
+static volatile unsigned long pending_op_id = 0;  // Incremented when new op is queued
+
+// Pending image display operation (processed by main loop)
+struct PendingImageOp {
+    uint8_t* buffer;
+    size_t size;
+    bool dismiss;  // true = dismiss current image, false = show new image
+};
+static volatile PendingImageOp pending_image_op = {nullptr, 0, false};
+
 // CPU usage tracking
 static uint32_t last_idle_runtime = 0;
 static uint32_t last_total_runtime = 0;
@@ -784,10 +801,47 @@ void handlePostBrightness(AsyncWebServerRequest *request, uint8_t *data, size_t 
 void handleImageUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
     // First chunk - initialize upload
     if (index == 0) {
+        // Check if upload already in progress - wait for it to complete
+        if (upload_state == UPLOAD_IN_PROGRESS) {
+            Logger.logMessage("Upload", "Another upload in progress, waiting...");
+            
+            // Wait for current upload to complete (with 1 second timeout)
+            unsigned long wait_start = millis();
+            while (upload_state == UPLOAD_IN_PROGRESS && (millis() - wait_start) < 1000) {
+                delay(10);  // Yield to other tasks
+            }
+            
+            // Check if we timed out
+            if (upload_state == UPLOAD_IN_PROGRESS) {
+                Logger.logMessage("Upload", "ERROR: Timeout waiting for previous upload");
+                request->send(409, "application/json", "{\"success\":false,\"message\":\"Previous upload still in progress after timeout\"}");
+                return;
+            }
+            
+            Logger.logMessage("Upload", "Previous upload completed, proceeding");
+        }
+        
         Logger.logBegin("Image Upload");
         Logger.logLinef("Filename: %s", filename.c_str());
         Logger.logLinef("Total size: %u bytes", request->contentLength());
-        Logger.logLinef("Free heap: %u bytes", ESP.getFreeHeap());
+        Logger.logLinef("Free heap before clear: %u bytes", ESP.getFreeHeap());
+        
+        // Free any pending image buffer to make room for new upload
+        // This handles the case where an upload was queued but not yet displayed
+        if (pending_image_op.buffer) {
+            Logger.logMessage("Upload", "Freeing pending image buffer");
+            free((void*)pending_image_op.buffer);
+            pending_image_op.buffer = nullptr;
+            pending_image_op.size = 0;
+        }
+        
+        // Hide currently displayed image and return to power screen
+        // This clears the buffer to free memory AND prevents showing garbage on screen
+        // Note: This does LVGL operations from AsyncWebServer task, but so does
+        // display_show_image() later, and the deferred pattern handles the critical parts
+        display_hide_image();
+        
+        Logger.logLinef("Free heap after clear: %u bytes", ESP.getFreeHeap());
         
         // Check file size
         size_t total_size = request->contentLength();
@@ -813,11 +867,11 @@ void handleImageUpload(AsyncWebServerRequest *request, String filename, size_t i
         }
         
         image_upload_size = 0;
-        Logger.logMessage("Upload", "Buffer allocated");
+        upload_state = UPLOAD_IN_PROGRESS;
     }
     
     // Receive data chunks
-    if (len && image_upload_buffer) {
+    if (len && image_upload_buffer && upload_state == UPLOAD_IN_PROGRESS) {
         memcpy(image_upload_buffer + image_upload_size, data, len);
         image_upload_size += len;
         
@@ -829,9 +883,9 @@ void handleImageUpload(AsyncWebServerRequest *request, String filename, size_t i
         }
     }
     
-    // Final chunk - display image
+    // Final chunk - validate and queue for display
     if (final) {
-        if (image_upload_buffer && image_upload_size > 0) {
+        if (image_upload_buffer && image_upload_size > 0 && upload_state == UPLOAD_IN_PROGRESS) {
             Logger.logLinef("Upload complete: %u bytes", image_upload_size);
             
             // Validate JPEG or SJPG magic bytes
@@ -863,28 +917,33 @@ void handleImageUpload(AsyncWebServerRequest *request, String filename, size_t i
                 free(image_upload_buffer);
                 image_upload_buffer = nullptr;
                 image_upload_size = 0;
+                upload_state = UPLOAD_IDLE;
                 request->send(400, "application/json", "{\"success\":false,\"message\":\"Invalid JPEG/SJPG file\"}");
                 return;
             }
             
-            // Display image
-            bool success = display_show_image(image_upload_buffer, image_upload_size);
+            // Queue image for display by main loop (deferred operation)
+            // If there's already a pending op, free it (replace with new image)
+            if (pending_image_op.buffer) {
+                Logger.logMessage("Upload", "Replacing pending image");
+                free((void*)pending_image_op.buffer);
+            }
             
-            // Note: Don't free buffer yet - display_show_image() makes a copy
-            // The image screen will manage its own buffer
-            free(image_upload_buffer);
+            pending_image_op.buffer = image_upload_buffer;
+            pending_image_op.size = image_upload_size;
+            pending_image_op.dismiss = false;
+            pending_op_id++;
+            upload_state = UPLOAD_READY_TO_DISPLAY;
+            
+            // Don't free buffer - main loop will handle it
             image_upload_buffer = nullptr;
             image_upload_size = 0;
             
-            if (success) {
-                Logger.logEnd("Image displayed successfully (10s timeout)");
-                request->send(200, "application/json", "{\"success\":true,\"message\":\"Image displayed (10s timeout)\"}");
-            } else {
-                Logger.logEnd("ERROR: Failed to display image");
-                request->send(500, "application/json", "{\"success\":false,\"message\":\"Failed to display image\"}");
-            }
+            Logger.logEnd("Image queued for display");
+            request->send(200, "application/json", "{\"success\":true,\"message\":\"Image queued for display (10s timeout)\"}");
         } else {
             Logger.logEnd("ERROR: No data received");
+            upload_state = UPLOAD_IDLE;
             request->send(400, "application/json", "{\"success\":false,\"message\":\"No data received\"}");
         }
     }
@@ -893,8 +952,17 @@ void handleImageUpload(AsyncWebServerRequest *request, String filename, size_t i
 // DELETE /api/display/image - Manually dismiss image and return to power screen
 void handleImageDelete(AsyncWebServerRequest *request) {
     Logger.logMessage("Portal", "Image dismiss requested");
-    display_hide_image();
-    request->send(200, "application/json", "{\"success\":true,\"message\":\"Image dismissed\"}");
+    
+    // Queue dismiss operation for main loop
+    if (pending_image_op.buffer) {
+        free((void*)pending_image_op.buffer);
+    }
+    pending_image_op.buffer = nullptr;
+    pending_image_op.size = 0;
+    pending_image_op.dismiss = true;
+    upload_state = UPLOAD_READY_TO_DISPLAY;  // Reuse state to trigger processing
+    
+    request->send(200, "application/json", "{\"success\":true,\"message\":\"Image dismiss queued\"}");
 }
 
 // ===== PUBLIC API =====
@@ -1048,4 +1116,48 @@ bool web_portal_is_ap_mode() {
 // Check if OTA update is in progress
 bool web_portal_ota_in_progress() {
     return ota_in_progress;
+}
+
+// Process pending image operations (call from main loop)
+void web_portal_process_pending() {
+    static unsigned long last_processed_id = 0;
+    
+    // Only process if upload is ready and no OTA in progress
+    if (upload_state != UPLOAD_READY_TO_DISPLAY || ota_in_progress) {
+        return;
+    }
+    
+    // Skip if we already processed this operation
+    if (pending_op_id == last_processed_id) {
+        return;
+    }
+    
+    last_processed_id = pending_op_id;  // Mark as processed
+    
+    if (pending_image_op.dismiss) {
+        // Dismiss current image
+        display_hide_image();
+        pending_image_op.dismiss = false;
+        upload_state = UPLOAD_IDLE;
+    } else if (pending_image_op.buffer && pending_image_op.size > 0) {
+        // Display new image
+        bool success = display_show_image(pending_image_op.buffer, pending_image_op.size);
+        
+        // Free the upload buffer (display_show_image makes its own copy)
+        free((void*)pending_image_op.buffer);
+        pending_image_op.buffer = nullptr;
+        pending_image_op.size = 0;
+        upload_state = UPLOAD_IDLE;
+        
+        if (!success) {
+            Logger.logMessage("Portal", "ERROR: Failed to display image");
+        }
+    } else {
+        // Invalid state - reset only if not actively uploading
+        if (upload_state == UPLOAD_READY_TO_DISPLAY) {
+            Logger.logMessage("Portal", "WARNING: Invalid pending state (no dismiss and no buffer), resetting");
+            upload_state = UPLOAD_IDLE;
+        }
+        // If upload_state is UPLOAD_IN_PROGRESS, leave it alone - upload is ongoing
+    }
 }
