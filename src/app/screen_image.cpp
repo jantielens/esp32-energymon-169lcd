@@ -136,13 +136,26 @@ void ImageScreen::show() {
     if (screen_obj) {
         lv_scr_load(screen_obj);
         visible = true;
-        display_start_time = millis();
-        Logger.logMessage("ImageScreen", "Displayed (10s timeout started)");
+        // Only set start time if not already set (for accurate timeout)
+        if (display_start_time == 0) {
+            display_start_time = millis();
+        }
+        Logger.logLinef("ImageScreen", "Displayed (%lus timeout started)", display_timeout_ms / 1000);
     }
 }
 
 void ImageScreen::hide() {
     visible = false;
+}
+
+void ImageScreen::set_timeout(unsigned long timeout_ms) {
+    display_timeout_ms = timeout_ms;
+    Logger.logLinef("ImageScreen", "Timeout set to %lu ms", timeout_ms);
+}
+
+void ImageScreen::set_start_time(unsigned long start_time) {
+    display_start_time = start_time;
+    Logger.logLinef("ImageScreen", "Start time set to %lu ms", start_time);
 }
 
 bool ImageScreen::load_image(const uint8_t* jpeg_data, size_t jpeg_size) {
@@ -236,6 +249,9 @@ void ImageScreen::clear_image() {
 bool ImageScreen::is_timeout_expired() {
     if (!visible) return false;
     
+    // If timeout is 0, never expire (permanent display)
+    if (display_timeout_ms == 0) return false;
+    
     unsigned long elapsed = millis() - display_start_time;
-    return elapsed >= DISPLAY_TIMEOUT_MS;
+    return elapsed >= display_timeout_ms;
 }

@@ -70,6 +70,7 @@ static uint8_t current_brightness = 100;
 // Image upload buffer (allocated temporarily during upload)
 static uint8_t* image_upload_buffer = nullptr;
 static size_t image_upload_size = 0;
+static unsigned long image_upload_timeout_ms = 10000;  // Timeout for current upload
 static const size_t MAX_IMAGE_SIZE = 100 * 1024;  // 100KB limit
 
 // Upload state tracking
@@ -86,8 +87,10 @@ struct PendingImageOp {
     uint8_t* buffer;
     size_t size;
     bool dismiss;  // true = dismiss current image, false = show new image
+    unsigned long timeout_ms;  // Display timeout in milliseconds
+    unsigned long start_time;  // Time when upload completed (for accurate timeout)
 };
-static volatile PendingImageOp pending_image_op = {nullptr, 0, false};
+static volatile PendingImageOp pending_image_op = {nullptr, 0, false, 10000, 0};
 
 // CPU usage tracking
 static uint32_t last_idle_runtime = 0;
@@ -824,6 +827,24 @@ void handleImageUpload(AsyncWebServerRequest *request, String filename, size_t i
         Logger.logBegin("Image Upload");
         Logger.logLinef("Filename: %s", filename.c_str());
         Logger.logLinef("Total size: %u bytes", request->contentLength());
+        
+        // Parse optional timeout parameter from query string (e.g., ?timeout=30)
+        unsigned long timeout_seconds = 10;  // Default 10 seconds
+        if (request->hasParam("timeout")) {
+            String timeout_str = request->getParam("timeout")->value();
+            timeout_seconds = timeout_str.toInt();
+            
+            // Validate timeout range: 0 = no timeout, 1-86400 seconds (24 hours max)
+            // 0 means image stays permanently (no auto-dismiss)
+            if (timeout_seconds > 86400) timeout_seconds = 86400;
+            
+            Logger.logLinef("Timeout: %lu seconds (from query parameter)", timeout_seconds);
+        }
+        unsigned long timeout_ms = timeout_seconds * 1000;
+        
+        // Store timeout for later use when queuing the operation
+        image_upload_timeout_ms = timeout_ms;
+        
         Logger.logLinef("Free heap before clear: %u bytes", ESP.getFreeHeap());
         
         // Free any pending image buffer to make room for new upload
@@ -852,9 +873,16 @@ void handleImageUpload(AsyncWebServerRequest *request, String filename, size_t i
         }
         
         // Check available memory
-        if (ESP.getFreeHeap() < total_size + 50000) {  // Need extra headroom for decoding
-            Logger.logEnd("ERROR: Insufficient memory");
-            request->send(507, "application/json", "{\"success\":false,\"message\":\"Insufficient memory\"}");
+        size_t free_heap = ESP.getFreeHeap();
+        size_t required_heap = total_size + 50000;  // Need extra headroom for decoding
+        if (free_heap < required_heap) {
+            Logger.logLinef("ERROR: Insufficient memory (need %u, have %u)", required_heap, free_heap);
+            char error_msg[128];
+            snprintf(error_msg, sizeof(error_msg), 
+                     "{\"success\":false,\"message\":\"Insufficient memory: need %uKB, have %uKB. Try reducing image size.\"}", 
+                     required_heap / 1024, free_heap / 1024);
+            Logger.logEnd("");
+            request->send(507, "application/json", error_msg);
             return;
         }
         
@@ -932,6 +960,8 @@ void handleImageUpload(AsyncWebServerRequest *request, String filename, size_t i
             pending_image_op.buffer = image_upload_buffer;
             pending_image_op.size = image_upload_size;
             pending_image_op.dismiss = false;
+            pending_image_op.timeout_ms = image_upload_timeout_ms;
+            pending_image_op.start_time = millis();  // Capture time when upload completes
             pending_op_id++;
             upload_state = UPLOAD_READY_TO_DISPLAY;
             
@@ -940,7 +970,13 @@ void handleImageUpload(AsyncWebServerRequest *request, String filename, size_t i
             image_upload_size = 0;
             
             Logger.logEnd("Image queued for display");
-            request->send(200, "application/json", "{\"success\":true,\"message\":\"Image queued for display (10s timeout)\"}");
+            
+            // Dynamic response message with actual timeout
+            char response_msg[128];
+            snprintf(response_msg, sizeof(response_msg), 
+                     "{\"success\":true,\"message\":\"Image queued for display (%lus timeout)\"}", 
+                     image_upload_timeout_ms / 1000);
+            request->send(200, "application/json", response_msg);
         } else {
             Logger.logEnd("ERROR: No data received");
             upload_state = UPLOAD_IDLE;
@@ -1140,8 +1176,9 @@ void web_portal_process_pending() {
         pending_image_op.dismiss = false;
         upload_state = UPLOAD_IDLE;
     } else if (pending_image_op.buffer && pending_image_op.size > 0) {
-        // Display new image
-        bool success = display_show_image(pending_image_op.buffer, pending_image_op.size);
+        // Display new image with custom timeout and accurate start time
+        bool success = display_show_image(pending_image_op.buffer, pending_image_op.size, 
+                                         pending_image_op.timeout_ms, pending_image_op.start_time);
         
         // Free the upload buffer (display_show_image makes its own copy)
         free((void*)pending_image_op.buffer);

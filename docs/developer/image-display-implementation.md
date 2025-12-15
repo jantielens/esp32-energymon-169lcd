@@ -49,11 +49,12 @@ This document details the implementation of dynamic image display on an ESP32-C3
 ### Functional Requirements
 
 - ✅ Upload images via HTTP API
-- ✅ Display for 10 seconds (configurable timeout)
+- ✅ Display with configurable timeout (default: 10 seconds, 0=permanent, max: 24 hours)
 - ✅ Auto-dismiss or manual dismiss
 - ✅ Return to previous screen after timeout
 - ✅ Minimize preprocessing complexity
 - ✅ Handle color accuracy (RGB↔BGR)
+- ✅ Accurate timeout counting (starts when upload completes, not after decode)
 
 ---
 
@@ -899,9 +900,11 @@ void ImageScreen::show() {
     lv_scr_load(screen_obj);
     visible = true;
     
-    // 10 second timeout
-    timeout_start = millis();
-    timeout_duration = 10000;
+    // Timeout timer set when upload completes (for accuracy)
+    // Only set here if not already set by upload handler
+    if (timeout_start == 0) {
+        timeout_start = millis();
+    }
 }
 
 void ImageScreen::update() {
@@ -910,6 +913,9 @@ void ImageScreen::update() {
     }
 }
 ```
+
+**Timeout timing:**
+The timeout timer starts when the HTTP upload completes (before image decoding), ensuring the full specified timeout duration is available for viewing. This accounts for the 1-3 seconds of JPEG decode time, so users get the full requested display time.
 
 ---
 

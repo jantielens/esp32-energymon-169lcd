@@ -1,7 +1,8 @@
 /*
  * Image Screen
  * 
- * Displays uploaded JPEG images for 10 seconds before returning to power screen.
+ * Displays uploaded JPEG images with configurable timeout before returning to power screen.
+ * Default timeout: 10 seconds (configurable via query parameter)
  * Images are stored in RAM only and lost on reboot.
  */
 
@@ -27,7 +28,13 @@ public:
     // Clear current image
     void clear_image();
     
-    // Check if timeout expired (10 seconds)
+    // Set display timeout in milliseconds (default: 10 seconds)
+    void set_timeout(unsigned long timeout_ms);
+    
+    // Set start time (for accurate timeout when decoding takes time)
+    void set_start_time(unsigned long start_time);
+    
+    // Check if timeout expired
     bool is_timeout_expired();
     
 private:
@@ -39,7 +46,7 @@ private:
     
     // Timeout tracking
     unsigned long display_start_time = 0;
-    static const unsigned long DISPLAY_TIMEOUT_MS = 10000;  // 10 seconds
+    unsigned long display_timeout_ms = 10000;  // Default 10 seconds, configurable
 };
 
 #endif // SCREEN_IMAGE_H

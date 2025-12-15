@@ -5,7 +5,7 @@ Display custom JPEG images on the ESP32 Energy Monitor's 1.69" LCD screen via RE
 ## Features
 
 - **JPEG Support**: Upload JPEG images up to 100KB
-- **Auto-Timeout**: Images display for 10 seconds then auto-return to power screen
+- **Auto-Timeout**: Configurable display timeout (default: 10 seconds, 0=permanent, max: 24 hours)
 - **Manual Dismiss**: DELETE endpoint to immediately return to power screen
 - **Memory Safe**: Works within ESP32-C3's 320KB RAM constraints
 - **MQTT Friendly**: Power monitoring continues in background during image display
@@ -15,17 +15,20 @@ Display custom JPEG images on the ESP32 Energy Monitor's 1.69" LCD screen via RE
 ### Upload and Display Image
 
 ```http
-POST /api/display/image
+POST /api/display/image?timeout=<seconds>
 Content-Type: multipart/form-data
 
 <JPEG image file>
 ```
 
+**Query Parameters:**
+- `timeout` (optional): Display timeout in seconds (0=permanent, 1-86400, default: 10)
+
 **Response (Success):**
 ```json
 {
   "success": true,
-  "message": "Image displayed (10s timeout)"
+  "message": "Image queued for display (30s timeout)"
 }
 ```
 
@@ -60,9 +63,19 @@ DELETE /api/display/image
 
 ### Using cURL
 
-**Upload image:**
+**Upload image (default 10 second timeout):**
 ```bash
 curl -X POST -F "image=@photo.jpg" http://192.168.1.100/api/display/image
+```
+
+**Upload with custom timeout (30 seconds):**
+```bash
+curl -X POST -F "image=@photo.jpg" 'http://192.168.1.100/api/display/image?timeout=30'
+```
+
+**Upload with permanent display (no auto-dismiss):**
+```bash
+curl -X POST -F "image=@photo.jpg" 'http://192.168.1.100/api/display/image?timeout=0'
 ```
 
 **Dismiss image:**
@@ -75,10 +88,16 @@ curl -X DELETE http://192.168.1.100/api/display/image
 ```python
 import requests
 
-# Upload image
+# Upload image with default timeout
 with open('photo.jpg', 'rb') as f:
     files = {'image': ('photo.jpg', f, 'image/jpeg')}
     response = requests.post('http://192.168.1.100/api/display/image', files=files)
+    print(response.json())
+
+# Upload image with custom timeout (60 seconds)
+with open('photo.jpg', 'rb') as f:
+    files = {'image': ('photo.jpg', f, 'image/jpeg')}
+    response = requests.post('http://192.168.1.100/api/display/image?timeout=60', files=files)
     print(response.json())
 
 # Dismiss image
@@ -129,12 +148,14 @@ img.save('output.jpg', 'JPEG', quality=75, optimize=True)
 
 ### Display Flow
 
-1. **Upload**: Client sends JPEG via POST request
+1. **Upload**: Client sends JPEG via POST request with optional timeout parameter
 2. **Validation**: Device checks file size, magic bytes (JPEG header)
 3. **Memory Check**: Ensures sufficient heap available (~50KB headroom)
-4. **Decode & Display**: SJPG decoder renders image to screen
-5. **Timeout**: After 10 seconds, automatically returns to power screen
+4. **Decode & Display**: SJPG decoder renders image to screen (timer starts before decoding)
+5. **Timeout**: After configured duration (default: 10 seconds), automatically returns to power screen
 6. **Cleanup**: Image buffer freed from RAM
+
+**Note on timeout timing:** The timeout timer starts when the upload completes (before image decoding begins). This ensures you get the full requested display time, accounting for the 1-3 seconds of JPEG decode time.
 
 ### Image Scaling
 
@@ -195,12 +216,21 @@ convert input.jpg -resize 240x280 -quality 75 output.jpg
 convert input.jpg -interlace none -quality 75 output.jpg
 ```
 
-### Timeout Too Short/Long
+### Display Timeout
 
-**Problem**: 10-second hardcoded timeout  
-**Solution**: Currently fixed in firmware. To change:
-1. Edit `src/app/screen_image.h` line 37: `DISPLAY_TIMEOUT_MS`
-2. Rebuild and flash firmware
+**Problem**: Need custom display duration  
+**Solution**: Use the `timeout` query parameter:
+
+```bash
+# Display for 30 seconds
+curl -F 'image=@photo.jpg' 'http://192.168.1.111/api/display/image?timeout=30'
+
+# Display for 2 minutes
+curl -F 'image=@photo.jpg' 'http://192.168.1.111/api/display/image?timeout=120'
+```
+
+**Range**: 1-300 seconds (5 minutes maximum)  
+**Default**: 10 seconds if not specified
 
 ## Use Cases
 
@@ -226,7 +256,7 @@ Display product information at tradeshows or retail
 | Upload time (5KB JPEG, WiFi) | ~1-2 seconds |
 | Decode time (240×280 JPEG) | ~1-3 seconds |
 | Total latency | ~3-5 seconds |
-| Auto-dismiss timeout | 10 seconds |
+| Auto-dismiss timeout | 10 seconds (default), 0=permanent, 1-86400 seconds (24 hours max) |
 
 ## Security Considerations
 
@@ -263,16 +293,20 @@ If exposing to internet, add:
 
 ### Timeout Implementation
 
-- Timer starts on `ImageScreen::show()`
+- Timer starts when upload completes (before image decode), captured in `web_portal.cpp`
+- Start time passed through to `ImageScreen` via `set_start_time()`
+- `ImageScreen::show()` uses pre-set start time if available, otherwise captures current time
 - Checked every frame in `display_update()`
-- Automatically calls `display_hide_image()` after 10s
+- Automatically calls `display_hide_image()` after configured timeout
 - Returns to previous screen (typically power screen)
+- **Accurate timing**: Full display duration available regardless of decode time (1-3 seconds)
+- **Permanent display**: Setting `timeout=0` disables auto-dismiss (image stays until manually dismissed)
 
 ## Future Enhancements
 
 Potential improvements (not yet implemented):
 
-- [ ] Configurable timeout via API parameter
+- [x] ~~Configurable timeout via API parameter~~ ✅ Implemented
 - [ ] PNG support (requires more RAM)
 - [ ] Image persistence to flash (LittleFS)
 - [ ] Multiple image slideshow mode

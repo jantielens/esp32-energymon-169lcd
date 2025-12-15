@@ -15,15 +15,20 @@ fi
 INPUT="$1"
 OUTPUT="${2:-${INPUT%.jpg}.sjpg}"
 
-# Find LVGL conversion script
-LVGL_SCRIPT="$HOME/Arduino/libraries/lvgl/scripts/jpg_to_sjpg.py"
+# Find LVGL conversion script (check local tools/ first, then Arduino libraries)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LVGL_SCRIPT="$SCRIPT_DIR/jpg_to_sjpg.py"
 
 if [ ! -f "$LVGL_SCRIPT" ]; then
-    echo "Error: LVGL conversion script not found at:"
-    echo "  $LVGL_SCRIPT"
-    echo ""
-    echo "Please ensure LVGL library is installed via Arduino IDE"
-    exit 1
+    LVGL_SCRIPT="$HOME/Arduino/libraries/lvgl/scripts/jpg_to_sjpg.py"
+    if [ ! -f "$LVGL_SCRIPT" ]; then
+        echo "Error: LVGL conversion script not found at:"
+        echo "  $SCRIPT_DIR/jpg_to_sjpg.py"
+        echo "  $HOME/Arduino/libraries/lvgl/scripts/jpg_to_sjpg.py"
+        echo ""
+        echo "The script should be included in the tools/ directory"
+        exit 1
+    fi
 fi
 
 if [ ! -f "$INPUT" ]; then

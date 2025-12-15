@@ -389,6 +389,105 @@ Returns current portal operating mode (AP or WiFi connected).
 - UI adaptation based on mode
 - Network diagnostics
 
+## Image Display
+
+### `POST /api/display/image`
+
+Upload and display a JPEG or SJPG image on the LCD with configurable timeout.
+
+**Request:**
+- **Content-Type**: `multipart/form-data`
+- **Field name**: `image`
+- **File**: JPEG or Split JPEG (SJPG) file
+- **Max size**: 100KB
+- **Query parameter**: `timeout` (optional) - Display duration in seconds
+
+**Query Parameters:**
+- `timeout` (number, optional): Display timeout in seconds
+  - `0` = Permanent display (no auto-dismiss)
+  - `1-86400` = Timeout in seconds (max 24 hours)
+  - Default: `10` seconds
+  - Timer starts when upload completes (accounts for 1-3s decode time)
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "message": "Image queued for display (30s timeout)"
+}
+```
+
+**Response (Error - Invalid Format):**
+```json
+{
+  "success": false,
+  "message": "Invalid JPEG/SJPG file"
+}
+```
+
+**Response (Error - Insufficient Memory):**
+```json
+{
+  "success": false,
+  "message": "Insufficient memory: need 35KB, have 28KB. Try reducing image size."
+}
+```
+
+**Notes:**
+- Supported formats: JPEG (0xFF 0xD8 0xFF) and SJPG (0x5F 0x53 0x4A 0x50) magic bytes
+- Images stored in RAM only (lost on reboot)
+- SJPG format recommended for memory efficiency (~35KB RAM vs 134KB for full JPEG)
+- Automatic RGB↔BGR color conversion required (see preprocessing tools)
+- Concurrent uploads: second upload waits up to 1 second for first to complete
+- After timeout, display returns to power screen automatically
+- `timeout=0` makes image permanent until manually dismissed
+
+**Examples:**
+```bash
+# Display image with default 10 second timeout
+curl -X POST -F "image=@photo.jpg" http://energy-monitor.local/api/display/image
+
+# Display image for 30 seconds
+curl -X POST -F "image=@photo.jpg" 'http://energy-monitor.local/api/display/image?timeout=30'
+
+# Permanent display (no auto-dismiss)
+curl -X POST -F "image=@photo.jpg" 'http://energy-monitor.local/api/display/image?timeout=0'
+
+# Display for 1 hour
+curl -X POST -F "image=@photo.jpg" 'http://energy-monitor.local/api/display/image?timeout=3600'
+
+# Using preprocessing script (handles RGB↔BGR conversion)
+cd tools
+./test-image-api.sh 192.168.1.100 photo.jpg
+```
+
+### `DELETE /api/display/image`
+
+Manually dismiss the currently displayed image and return to power screen.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Image dismissed"
+}
+```
+
+**Notes:**
+- Works for both timed and permanent (`timeout=0`) images
+- No effect if no image is currently displayed
+- Immediately returns to power screen
+
+**Example:**
+```bash
+curl -X DELETE http://energy-monitor.local/api/display/image
+```
+
+**See Also:**
+- [Image Display User Guide](../user/image-display.md) - Usage examples and troubleshooting
+- [Image Display Implementation](image-display-implementation.md) - Technical deep-dive: SJPG format, VFS, threading
+- [Home Assistant Integration](../user/home-assistant-integration.md) - Camera snapshot automation
+
 ## System Control
 
 ### `POST /api/reboot`

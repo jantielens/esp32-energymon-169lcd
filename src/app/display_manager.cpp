@@ -193,11 +193,17 @@ void display_update_fps() {
     }
 }
 
-bool display_show_image(const uint8_t* jpeg_data, size_t jpeg_size) {
+bool display_show_image(const uint8_t* jpeg_data, size_t jpeg_size, unsigned long timeout_ms, unsigned long start_time) {
     // Create image screen on first use
     if (!image_screen) {
         image_screen = new ImageScreen();
         image_screen->create();
+    }
+    
+    // Set the display timeout and start time
+    image_screen->set_timeout(timeout_ms);
+    if (start_time > 0) {
+        image_screen->set_start_time(start_time);
     }
     
     // Load image data (this will decode it immediately)

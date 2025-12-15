@@ -14,12 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.4.0] - 2025-12-15
 
 ### Added
-- **Image Display API**: Display temporary images on the LCD via HTTP upload
-  - `POST /api/display/image` - Upload JPEG/SJPG images (max 100KB)
+- **Image Display API**: Display temporary or permanent images on the LCD via HTTP upload
+  - `POST /api/display/image?timeout=<seconds>` - Upload JPEG/SJPG images (max 100KB)
   - `DELETE /api/display/image` - Manually dismiss current image
   - Support for standard JPEG and Split JPEG (SJPG) formats
-  - Images display for 10 seconds with automatic timeout
-  - Automatic return to power screen after dismissal
+  - Configurable timeout: 0 (permanent display), 1-86400 seconds (default: 10s, max: 24 hours)
+  - Accurate timeout timing: starts when upload completes (accounts for 1-3s decode time)
+  - Automatic return to power screen after timeout (unless timeout=0)
   - Memory-efficient: SJPG format uses only ~35KB RAM for 280×240 images
   - Thread-safe implementation using deferred operations pattern
   - Concurrent upload handling: second upload waits up to 1s for first to complete
