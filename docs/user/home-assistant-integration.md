@@ -128,9 +128,9 @@ Manual test automation (trigger manually from UI or automation editor):
 alias: "Camera to ESP32 (Manual Test)"
 description: "Send camera snapshot to ESP32 display"
 mode: single
-triggers: []
+trigger: []
 conditions: []
-actions:
+action:
   - event: camera_to_esp32
     event_data:
       camera_entity: camera.front_door
@@ -145,6 +145,51 @@ actions:
 **To run:** Go to Settings → Automations & Scenes → Find this automation → Click the ▶ (Run) button
 
 ### Advanced Examples
+
+#### Multiple Cameras (Single Automation)
+
+If you want a single automation with multiple camera/person triggers (instead of duplicating automations), assign an `id` to each trigger and pick the camera based on `trigger.id`.
+
+This example also includes a safe default camera for manual runs (when `trigger` may not be set).
+
+```yaml
+alias: "Camera to ESP32 (Multi Camera)"
+description: "Send the correct camera snapshot to ESP32"
+mode: single
+
+trigger:
+  - platform: state
+    entity_id: binary_sensor.driveway_person
+    to: "on"
+    id: driveway
+
+  - platform: state
+    entity_id: binary_sensor.front_door_person
+    to: "on"
+    id: front_door
+
+  - platform: state
+    entity_id: binary_sensor.garden_person
+    to: "on"
+    id: garden
+
+action:
+  - event: camera_to_esp32
+    event_data:
+      esp32_ip: "192.168.1.111"
+      mode: single
+      timeout: 30
+      jpeg_quality: 50
+      camera_entity: >
+        {% set tid = (trigger.id if trigger is defined else 'garden') %}
+        {% if tid == 'driveway' %}
+          camera.driveway
+        {% elif tid == 'front_door' %}
+          camera.front_door
+        {% else %}
+          camera.garden
+        {% endif %}
+```
 
 #### Multiple Cameras to Different ESP32 Devices
 
