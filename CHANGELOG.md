@@ -15,19 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Image Display API**: Display temporary or permanent images on the LCD via HTTP upload
-  - `POST /api/display/image?timeout=<seconds>` - Upload JPEG/SJPG images (max 100KB)
+  - `POST /api/display/image?timeout=<seconds>` - Upload a baseline JPEG (max 100KB)
+  - `POST /api/display/image/chunks?index=<i>&total=<n>&width=<w>&height=<h>&timeout=<seconds>` - Upload baseline JPEG fragments (memory-efficient)
   - `DELETE /api/display/image` - Manually dismiss current image
-  - Support for standard JPEG and Split JPEG (SJPG) formats
+  - JPEG-only: rejects unsupported encodings (e.g., progressive) with descriptive errors
   - Configurable timeout: 0 (permanent display), 1-86400 seconds (default: 10s, max: 24 hours)
   - Accurate timeout timing: starts when upload completes (accounts for 1-3s decode time)
   - Automatic return to power screen after timeout (unless timeout=0)
-  - Memory-efficient: SJPG format uses only ~35KB RAM for 280×240 images
+  - Direct-to-LCD decoding via TJpgDec (raw panel coordinates; pre-rotate client-side if needed)
   - Thread-safe implementation using deferred operations pattern
   - Concurrent upload handling: second upload waits up to 1s for first to complete
-  - Virtual filesystem (VFS) driver enables LVGL to decode images from RAM
-  - RGB↔BGR color conversion handled via preprocessing (jpg2sjpg.sh script)
-  - Validation: JPEG (0xFF 0xD8 0xFF) and SJPG (0x5F 0x53 0x4A 0x50) magic bytes
-  - Test script included: `tools/test-image-api.sh <ip> <image.jpg>`
+  - Firmware handles RGB/BGR packing internally (upload normal RGB JPEGs)
   - See [image-display-implementation.md](docs/developer/image-display-implementation.md) for technical details
 
 - **Deferred Operations Pattern**: Thread-safe LVGL access from AsyncWebServer
@@ -36,7 +34,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Operation ID counter prevents duplicate processing
   - `web_portal_process_pending()` function in main loop handles queued operations
   - Prevents race conditions from concurrent task access to LVGL (not thread-safe)
-  - VFS busy flag protects global pointers during image decoding
 
 - **PowerScreen Visibility Checks**: Widgets only updated when screen is visible
   - Prevents race conditions during screen switches
@@ -45,12 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Screen Switching Synchronization**: Reliable display during transitions
   - Multiple `lv_timer_handler()` calls ensure complete screen redraw
-  - Handles split JPEG progressive decoding across multiple frames
+  - Handles redraws across multiple frames when switching screens
   - Prevents white screen or partial rendering issues
 
 - **Comprehensive Documentation**: Full technical guide for image display implementation
   - Architecture diagrams and memory analysis
-  - Format comparison (JPEG vs PNG vs SJPG)
+  - Format comparison (JPEG vs PNG)
   - Color space handling (RGB vs BGR for ST7789V2)
   - Concurrency solutions and debugging guide
   - Troubleshooting appendix with common issues

@@ -63,7 +63,7 @@ void display_init() {
 
     lv_init();
     
-    // Initialize SJPG decoder for image display API
+    // Initialize LVGL split-JPEG decoder (if enabled in LVGL config)
     lv_split_jpeg_init();
 
     lv_disp_draw_buf_init(&draw_buf, buf1, buf2, LCD_WIDTH * 20);  // Double buffering
@@ -227,7 +227,7 @@ bool display_show_image(const uint8_t* jpeg_data, size_t jpeg_size, unsigned lon
     current_screen = image_screen;
     
     // Force multiple render cycles to ensure screen switch completes
-    // SJPEG decoding may span multiple lv_timer_handler calls
+    // Image decode/display may span multiple lv_timer_handler calls
     for (int i = 0; i < 5; i++) {
         lv_timer_handler();
         delay(5);
@@ -293,19 +293,23 @@ bool display_start_strip_upload(uint16_t width, uint16_t height, unsigned long t
 }
 
 bool display_decode_strip(const uint8_t* jpeg_data, size_t jpeg_size, uint8_t strip_index) {
+    return display_decode_strip_ex(jpeg_data, jpeg_size, strip_index, true);
+}
+
+bool display_decode_strip_ex(const uint8_t* jpeg_data, size_t jpeg_size, uint8_t strip_index, bool output_bgr565) {
     if (!direct_image_screen) {
-        Logger.logMessage("ERROR", "display_decode_strip: direct_image_screen is NULL");
+        Logger.logMessage("ERROR", "display_decode_strip_ex: direct_image_screen is NULL");
         return false;
     }
-    
+
     if (current_screen != direct_image_screen) {
-        Logger.logMessagef("ERROR", "display_decode_strip: current_screen mismatch (current=%p, expected=%p)", 
+        Logger.logMessagef("ERROR", "display_decode_strip_ex: current_screen mismatch (current=%p, expected=%p)",
                           current_screen, direct_image_screen);
         return false;
     }
-    
+
     // Decode and render the strip directly to LCD
-    return direct_image_screen->decode_strip(jpeg_data, jpeg_size, strip_index);
+    return direct_image_screen->decode_strip(jpeg_data, jpeg_size, strip_index, output_bgr565);
 }
 
 void display_hide_strip_image() {

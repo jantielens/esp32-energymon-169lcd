@@ -4,7 +4,7 @@
 
 This document describes a memory-efficient image upload technique that enables large image display on resource-constrained embedded systems. By uploading and decoding JPEG strips individually rather than buffering entire files, this approach achieves **constant memory usage regardless of image size**.
 
-**Key innovation:** Each SJPG strip is an independent JPEG that can be uploaded, decoded, and displayed separately. The ESP32 never holds the entire image file in memory.
+**Key innovation:** Each uploaded strip is an independent **baseline JPEG fragment** that can be uploaded, decoded, and displayed separately. The ESP32 never holds the entire image file in memory.
 
 **Target audience:** 
 - Developers implementing image display on memory-constrained embedded systems
@@ -35,7 +35,7 @@ Traditional image display approaches buffer the entire compressed file in RAM be
 
 ```
 Traditional approach:
-1. Upload full image file (e.g., 115KB SJPG)
+1. Upload full image file (e.g., ~115KB JPEG)
 2. Store in RAM buffer (115KB allocated)
 3. Decoder reads from buffer
 4. Decode strips one at a time (~15KB decode buffer)
@@ -47,7 +47,7 @@ Total RAM: 115KB + 15KB = 130KB
 
 ### Memory Requirements by Screen Size
 
-| Screen Size | SJPG File | Single-File RAM | Strip-Based RAM | Savings |
+| Screen Size | JPEG File | Single-File RAM | Strip-Based RAM | Savings |
 |-------------|-----------|-----------------|-----------------|---------|
 | 240×280 | 22 KB | 35 KB | 15 KB | 57% |
 | 320×240 | 28 KB | 43 KB | 15 KB | 65% |
@@ -64,13 +64,11 @@ Total RAM: 115KB + 15KB = 130KB
 
 ### The Core Concept
 
-**SJPG files contain independent JPEG strips** that can be decoded separately:
+**Independent JPEG fragments** can be decoded separately:
 
 ```
-SJPG File Structure:
+Conceptual Structure:
 ┌─────────────────────────────────────────┐
-│ Header: Width, Height, Strip Count      │ 22-40 bytes
-├─────────────────────────────────────────┤
 │ Strip 0: [Complete JPEG, lines 0-31]    │ ← Standalone JPEG!
 │ Strip 1: [Complete JPEG, lines 32-63]   │ ← Standalone JPEG!
 │ Strip 2: [Complete JPEG, lines 64-95]   │ ← Standalone JPEG!
@@ -89,19 +87,13 @@ Each strip is a valid JPEG image of size: [width] × [strip_height]
 │                                                               │
 │  1. Original image (photo.jpg, RGB)                          │
 │      ↓                                                       │
-│  2. Color swap R↔B for BGR display (jpg2sjpg.sh)           │
+│  2. Split into strips and encode each strip as baseline JPEG  │
 │      ↓                                                       │
-│  3. Split into JPEG strips (jpg_to_sjpg.py)                 │
-│     → photo.sjpg (contains N independent JPEGs)             │
-│      ↓                                                       │
-│  4. Extract individual strips (upload_strips.py)             │
-│     Parses SJPG header, extracts strip lengths (cumulative)  │
-│      ↓                                                       │
-│  5. Upload each strip via HTTP                               │
-│     POST /api/display/strip?index=0&total=N&width=W&height=H │
-│     POST /api/display/strip?index=1&total=N&width=W&height=H │
+│  3. Upload each strip via HTTP                               │
+│     POST /api/display/image/chunks?index=0&total=N&width=W&height=H │
+│     POST /api/display/image/chunks?index=1&total=N&width=W&height=H │
 │     ...                                                      │
-│     POST /api/display/strip?index=N-1&total=N&width=W&height=H│
+│     POST /api/display/image/chunks?index=N-1&total=N&width=W&height=H│
 └──────────────────────────────────────────────────────────────┘
                           ↓ WiFi (each strip independently)
 ┌──────────────────────────────────────────────────────────────┐
@@ -131,7 +123,7 @@ Each strip is a valid JPEG image of size: [width] × [strip_height]
 │  │ TJpgDec Callbacks                        │                │
 │  │  • jpeg_input_func(): Read JPEG data    │                │
 │  │  • jpeg_output_func(): Write RGB pixels  │                │
-│  │    - Convert RGB888 → BGR565             │                │
+│  │    - Convert RGB888 → RGB565             │                │
 │  │    - Write directly to LCD               │                │
 │  └─────────────────────────────────────────┘                │
 │                     ↓                                         │
@@ -169,20 +161,15 @@ Strip-based stays at ~15KB regardless of total image size! ✅
 
 ## Implementation Details
 
-### 1. SJPG Strip Encoding
+### 1. Client-Side Strip Encoding
 
-**Strip size is configured in the encoder script:**
+Each request body is a standalone baseline JPEG fragment.
 
-```python
-# tools/jpg_to_sjpg.py
-JPEG_SPLIT_HEIGHT = 32  # Pixels per strip (configurable: 8, 16, 32, 64...)
+Instead, the client splits the source image into horizontal strips and encodes **each strip** as an independent **baseline JPEG fragment**. Each fragment is uploaded to the device via:
 
-# The script:
-# 1. Splits source image into horizontal slices of JPEG_SPLIT_HEIGHT
-# 2. Encodes each slice as independent JPEG
-# 3. Packages JPEGs into SJPG container with header
-# 4. Header includes: width, height, strip_count, strip_height, per-strip lengths
-```
+`POST /api/display/image/chunks?index=N&total=T&width=W&height=H&timeout=seconds`
+
+This keeps the device memory usage constant and avoids buffering an entire image file.
 
 **Strip size trade-offs:**
 
@@ -197,56 +184,19 @@ JPEG_SPLIT_HEIGHT = 32  # Pixels per strip (configurable: 8, 16, 32, 64...)
 
 ---
 
-### 2. Client-Side Strip Extraction
+### 2. Client Tooling
 
-**Python script to parse SJPG and extract strips:**
+The repository includes a reference uploader that performs the split-and-encode step and uploads each fragment in order:
 
-```python
-# tools/upload_strips.py
-import struct
-
-def parse_sjpg(sjpg_file):
-    """Parse SJPG file format and extract strips."""
-    with open(sjpg_file, 'rb') as f:
-        data = f.read()
-    
-    # Validate magic bytes
-    if data[0:4] != b'_SJP':
-        raise ValueError("Invalid SJPG file")
-    
-    # Parse header (little-endian)
-    width = struct.unpack('<H', data[14:16])[0]
-    height = struct.unpack('<H', data[16:18])[0]
-    num_strips = struct.unpack('<H', data[18:20])[0]
-    block_height = struct.unpack('<H', data[20:22])[0]
-    
-    print(f"SJPG: {width}x{height}, {num_strips} strips ({block_height}px each)")
-    
-    # Parse strip length table (2 bytes per strip, starting at byte 22)
-    lengths = []
-    pos = 22
-    for i in range(num_strips):
-        length = struct.unpack('<H', data[pos:pos+2])[0]
-        lengths.append(length)
-        pos += 2
-    
-    # Header size = 22 + (num_strips * 2)
-    header_size = pos
-    
-    # Extract each strip (JPEG data using cumulative lengths)
-    strips = []
-    offset = 0
-    for i in range(num_strips):
-        start = header_size + offset
-        end = start + lengths[i]
-        offset += lengths[i]
-        
-        strip_jpeg = data[start:end]
-        strips.append(strip_jpeg)
-        print(f"  Strip {i}: {len(strip_jpeg)} bytes")
-    
-    return width, height, block_height, strips
+```bash
+python3 tools/upload_image.py 192.168.1.111 photo.jpg --mode strip --strip-height 32
 ```
+
+Notes:
+- The tool encodes fragments as **baseline JPEG** with **4:2:0** chroma subsampling by default (TJpgDec-friendly).
+- Clients should send **normal RGB JPEG input**; no client-side RGB↔BGR swapping is required.
+
+Metadata is provided via query parameters; the firmware accepts raw JPEG fragments directly.
 
 ---
 
@@ -364,9 +314,9 @@ static int jpeg_output_func(JDEC* jd, void* bitmap, JRECT* rect) {
 
 ---
 
-### 5. Output Callback: RGB → BGR Conversion
+### 5. Output Callback: RGB888 → RGB565/BGR565 Packing
 
-**TJpgDec outputs RGB888, but ST7789V2 displays expect BGR565:**
+TJpgDec outputs RGB888. The firmware packs pixels to RGB565 (or BGR565) based on the active display pipeline.
 
 ```cpp
 static int jpeg_output_func(JDEC* jd, void* bitmap, JRECT* rect) {
@@ -376,7 +326,7 @@ static int jpeg_output_func(JDEC* jd, void* bitmap, JRECT* rect) {
     uint8_t* src = (uint8_t*)bitmap;  // RGB888 from TJpgDec
     uint16_t* line = ctx->line_buffer;
     
-    // Convert RGB888 → BGR565 (swap R and B during packing)
+    // Pack RGB888 → RGB565/BGR565 (selectable)
     for (int y = rect->top; y <= rect->bottom; y++) {
         int pixel_count = rect->right - rect->left + 1;
         
@@ -385,7 +335,7 @@ static int jpeg_output_func(JDEC* jd, void* bitmap, JRECT* rect) {
             uint8_t g = *src++;  // Green
             uint8_t b = *src++;  // Blue
             
-            // Pack as BGR565 (swap red and blue)
+            // Example: pack as BGR565 (swap red and blue)
             line[i] = ((b & 0xF8) << 8) |   // Blue → bits 15-11
                       ((g & 0xFC) << 3) |   // Green → bits 10-5
                       (r >> 3);              // Red → bits 4-0
@@ -407,7 +357,7 @@ static int jpeg_output_func(JDEC* jd, void* bitmap, JRECT* rect) {
 ### Strip Upload Endpoint
 
 ```
-POST /api/display/strip
+POST /api/display/image/chunks
 Query Parameters:
   - index:   Strip index (0-based)
   - total:   Total number of strips in image
@@ -436,7 +386,7 @@ Response: 500 Error
 
 ```bash
 curl -X POST \
-  "http://192.168.1.111/api/display/strip?index=0&total=9&width=240&height=280&timeout=10" \
+    "http://192.168.1.111/api/display/image/chunks?index=0&total=9&width=240&height=280&timeout=10" \
   --data-binary "@strip_0.jpg" \
   -H "Content-Type: application/octet-stream"
 ```
@@ -465,75 +415,20 @@ curl -X POST \
 ### Upload Script
 
 ```bash
-#!/bin/bash
-# tools/test-strip-api.sh
 ESP32_IP="192.168.1.111"
 IMAGE="test240x280.jpg"
-TIMEOUT=10
 
-# 1. Convert to SJPG (with BGR color swap)
-./jpg2sjpg.sh "$IMAGE" temp.sjpg
-
-# 2. Upload strips
-python3 upload_strips.py "$ESP32_IP" temp.sjpg "$TIMEOUT"
-
-# 3. Cleanup
-rm temp.sjpg
+# Upload as sequential JPEG fragments (strip/chunk mode)
+python3 tools/upload_image.py "$ESP32_IP" "$IMAGE" --mode strip --strip-height 32 --timeout 10
 ```
-
-**Python uploader (upload_strips.py):**
-
-```python
-def upload_strips(esp32_ip, sjpg_file, timeout=10, start_strip=None, end_strip=None):
-    width, height, block_height, strips = parse_sjpg(sjpg_file)
-    
-    # Determine strip range
-    first = start_strip if start_strip is not None else 0
-    last = end_strip if end_strip is not None else len(strips) - 1
-    
-    print(f"\nUploading strips {first}-{last} to {esp32_ip}...")
-    
-    for i in range(first, last + 1):
-        strip_data = strips[i]
-        
-        # Build URL with metadata
-        url = f"http://{esp32_ip}/api/display/strip"
-        params = {
-            'index': i,
-            'total': len(strips),
-            'width': width,
-            'height': height,
-            'timeout': timeout
-        }
-        
-        # Upload strip
-        response = requests.post(
-            url,
-            params=params,
-            data=strip_data,
-            headers={'Content-Type': 'application/octet-stream'},
-            timeout=5
-        )
-        
-        if response.status_code == 200:
-            print(f"  Strip {i}/{len(strips)-1}: ✓ ({len(strip_data)} bytes)")
-        else:
-            print(f"  Strip {i}: ✗ HTTP {response.status_code}")
-            return False
-    
-    print("\n✅ Upload complete!")
-    return True
-```
-
 **Usage:**
 
 ```bash
 # Upload full image
-python3 upload_strips.py 192.168.1.111 photo.sjpg 10
+python3 tools/upload_image.py 192.168.1.111 photo.jpg --mode strip --strip-height 32 --timeout 10
 
 # Upload specific strips (for debugging)
-python3 upload_strips.py 192.168.1.111 photo.sjpg 10 2 2  # Only strip 2
-python3 upload_strips.py 192.168.1.111 photo.sjpg 10 0 5  # Strips 0-5
+python3 tools/upload_image.py 192.168.1.111 photo.jpg --mode strip --strip-height 32 --timeout 10 --start 2 --end 2
 ```
 
 ---
@@ -587,7 +482,7 @@ void handleLineUpload(AsyncWebServerRequest *request, uint8_t *data, size_t len)
     uint8_t line_buffer[width * 3];
     decompress(data, len, line_buffer);
     
-    // Convert RGB → BGR565 and write to LCD
+    // Convert RGB → RGB565 and write to LCD
     for (int x = 0; x < width; x++) {
         uint8_t r = line_buffer[x*3];
         uint8_t g = line_buffer[x*3 + 1];
@@ -599,29 +494,34 @@ void handleLineUpload(AsyncWebServerRequest *request, uint8_t *data, size_t len)
 }
 ```
 
-#### Example: BMP strip streaming
+#### Example: JPEG strip streaming
 
 ```python
-# Server: Split BMP into strips
-def split_bmp(bmp_file, strip_height=32):
-    img = Image.open(bmp_file)
-    
-    for i in range(0, img.height, strip_height):
-        strip = img.crop((0, i, img.width, min(i + strip_height, img.height)))
-        
-        # Save as raw RGB565
-        rgb565_data = convert_to_rgb565(strip)
-        
-        # Upload strip
-        requests.post(f"{esp32}/api/display/strip/{i//strip_height}", 
-                     data=rgb565_data)
+# Server: split an image into strips and upload each as a baseline JPEG fragment
+def upload_jpeg_strips(esp32, image_file, strip_height=32, timeout=10):
+    img = Image.open(image_file).convert('RGB')
+    total = math.ceil(img.height / strip_height)
+
+    for idx, y in enumerate(range(0, img.height, strip_height)):
+        strip = img.crop((0, y, img.width, min(y + strip_height, img.height)))
+
+        # Encode strip as baseline JPEG (device decodes each fragment independently)
+        buf = io.BytesIO()
+        strip.save(buf, format='JPEG', quality=90, subsampling=2, progressive=False)
+
+        requests.post(
+            f"{esp32}/api/display/image/chunks",
+            params={"index": idx, "total": total, "width": img.width, "height": img.height, "timeout": timeout},
+            headers={"Content-Type": "application/octet-stream"},
+            data=buf.getvalue(),
+        )
 ```
 
 ### Key Requirements for Adaptation
 
 1. **Format must be splittable** (scanlines, tiles, strips)
 2. **Each chunk processable independently** (no dependencies on previous chunks)
-3. **Client-side preprocessing acceptable** (extraction/conversion on PC/server)
+3. **Client-side splitting/re-encoding acceptable** (generate baseline JPEG fragments on PC/server)
 4. **Sequential write pattern** (top-to-bottom for displays)
 
 ---
@@ -650,15 +550,14 @@ Total for 9 strips: 165ms × 9 = 1.48 seconds
 Single-file timeline:
 ┌─────────────────────┬────────┐
 │ HTTP transfer       │ 300 ms │ (22KB over WiFi)
-│ VFS setup           │ 5 ms   │ (pointer assignment)
-│ LVGL SJPG decode    │ 200 ms │ (all strips)
+│ JPEG decode + blit   │ 200 ms │ (decode + LCD write)
 │ Buffer cleanup      │ 5 ms   │
 ├─────────────────────┼────────┤
-│ Total               │ 510 ms │
+│ Total               │ 505 ms │
 └─────────────────────┴────────┘
 ```
 
-**Result:** Strip-based is ~3× slower for small images, but **enables large images that wouldn't fit at all**.
+**Result:** Chunked uploads are typically slower for small images (more HTTP overhead), but keep memory usage predictable and can start drawing earlier.
 
 ### Network Considerations
 
@@ -725,9 +624,11 @@ Strip 2: Load access fault at 0x7f99xxxx
 
 **Symptom:** Red objects appear blue, blue appears red.
 
-**Cause:** Display expects BGR565 but receiving RGB565.
+**Cause:** Pixel packing mismatch (RGB565 vs BGR565).
 
-**Fix:** Swap R and B during pixel packing in output callback:
+**Fix (current):** Firmware handles this internally; upload a normal RGB JPEG (no client-side channel swapping).
+
+**Fix (implementation detail):** The decoder output callback packs either RGB565 or BGR565 based on a per-session flag.
 
 ```cpp
 // ✅ Correct (BGR565)
@@ -761,12 +662,7 @@ if (res != JDR_OK) {
 }
 ```
 
-**Validation:** Extract strip from SJPG and verify it's a valid JPEG:
-
-```bash
-python3 extract_strip.py test240x280.sjpg 2 strip2.jpg
-file strip2.jpg  # Should say: "JPEG image data..."
-```
+**Validation:** Each strip request body is a standalone baseline JPEG fragment. Use `tools/upload_image.py` with `--start/--end` to isolate failures.
 
 ---
 
@@ -850,23 +746,25 @@ bool StripDecoder::decode_strip(const uint8_t* jpeg_data, size_t jpeg_size, int 
 
 ### Related Documentation
 
-- [Image Display Implementation](image-display-implementation.md) - Single-file SJPG approach (for small images)
+- [Image Display Implementation](image-display-implementation.md) - Direct-to-LCD baseline JPEG APIs
 - [LVGL Display System](lvgl-display-system.md) - LVGL integration details
 - [Multi-Board Support](multi-board-support.md) - ESP32 vs ESP32-C3 differences
 
 ### External Resources
 
 - [TJpgDec Library](http://elm-chan.org/fsw/tjpgd/00index.html) - JPEG decoder documentation
-- [LVGL SJPG Format](https://docs.lvgl.io/8/libs/sjpg.html) - Split JPEG specification
+- [LVGL Documentation](https://docs.lvgl.io/8/) - UI framework reference
 - [ST7789V2 Datasheet](https://www.newhavendisplay.com/appnotes/datasheets/LCDs/ST7789V2.pdf) - Display controller
 
 ### Project Files
 
-**Server-side tools:**
-- [tools/jpg_to_sjpg.py](../../tools/jpg_to_sjpg.py) - SJPG encoder (configurable strip height)
-- [tools/jpg2sjpg.sh](../../tools/jpg2sjpg.sh) - Wrapper with BGR color swap
-- [tools/upload_strips.py](../../tools/upload_strips.py) - Strip upload client
-- [tools/extract_strip.py](../../tools/extract_strip.py) - SJPG strip extractor (debugging)
+**Client tooling:**
+- [tools/upload_image.py](../../tools/upload_image.py) - Reference uploader for `/api/display/image` and `/api/display/image/chunks`
+
+**Client tooling:**
+
+Use the reference uploader for both endpoints:
+- [tools/upload_image.py](../../tools/upload_image.py)
 
 **ESP32 implementation:**
 - [src/app/strip_decoder.h](../../src/app/strip_decoder.h) - Strip decoder interface
@@ -883,7 +781,7 @@ bool StripDecoder::decode_strip(const uint8_t* jpeg_data, size_t jpeg_size, int 
 1. **Constant memory usage** - 15-30KB regardless of image size
 2. **Automatic strip height adaptation** - Firmware reads actual dimensions from JPEG
 3. **Shared context pattern** - Prevents TJpgDec device pointer corruption
-4. **Client-side preprocessing** - All splitting/conversion done on PC/server
+4. **Client-side splitting/re-encoding** - Strips are generated client-side as baseline JPEG fragments
 5. **Graceful degradation** - Can fall back to single-file for small images
 
 ### When to Use
@@ -892,7 +790,7 @@ bool StripDecoder::decode_strip(const uint8_t* jpeg_data, size_t jpeg_size, int 
 - Images > 50KB on ESP32-C3
 - Display resolution > 400×300
 - Need predictable memory footprint
-- Client-side preprocessing acceptable
+- Client-side splitting/re-encoding acceptable
 
 **✅ Single-file upload:**
 - Images < 40KB
@@ -910,63 +808,26 @@ bool StripDecoder::decode_strip(const uint8_t* jpeg_data, size_t jpeg_size, int 
 | **Network overhead** | +0% | +17% | Single |
 | **Scalability** | Limited | Unlimited | Strip |
 | **Preprocessing** | None | Required | Single |
-| **Display rotation** | ✅ LVGL auto-rotate | ⚠️ Manual pre-rotate | Single |
+| **Display rotation** | ⚠️ Manual pre-rotate | ⚠️ Manual pre-rotate | Tie |
 
-### Critical Difference: Display Rotation
+### Display Rotation
 
-**⚠️ IMPORTANT:** The two upload methods handle display rotation differently!
+Both `/api/display/image` and `/api/display/image/chunks` render **direct-to-LCD** in **raw panel coordinates**.
 
-#### Single-File SJPG (via LVGL)
+That means **no LVGL rotation is applied** for either endpoint. Clients should upload images already rotated for the panel orientation.
 
-Uses LVGL's image widget (`lv_img_set_src()`), which **automatically respects LVGL rotation settings**:
-
-```cpp
-// board_config.h
-#define LCD_ROTATION 1  // 1 = 90° landscape mode
-
-// display_manager.cpp  
-disp_drv.sw_rotate = 1;
-disp_drv.rotated = LV_DISP_ROT_90;
-
-// screen_image.cpp
-lv_img_set_src(img_obj, "M:mem.sjpg");  // ✅ Auto-rotates to landscape
-```
-
-**Result:** Upload a **240×280 portrait** image, LVGL automatically rotates it to **280×240 landscape** display.
-
-**Image preparation:**
-- Create image in **physical display dimensions** (240×280 portrait)
-- LVGL handles rotation automatically based on `LCD_ROTATION` setting
-- No manual rotation needed
-
----
-
-#### Strip-Based Upload (Direct LCD Write)
-
-Writes pixels **directly to LCD hardware** via `lcd_push_pixels_at()`, which **bypasses LVGL rotation**:
-
-```cpp
-// strip_decoder.cpp - Output callback
-lcd_push_pixels_at(lcd_x, lcd_y, line_width, 1, line_buffer);
-// ⚠️ Pixels written exactly as provided - NO rotation!
-```
-
-**Result:** Pixels are written to LCD in **exact coordinates** provided - no rotation applied.
-
-**Image preparation:**
-- Must pre-rotate image to match **display orientation**
-- If `LCD_ROTATION = 1` (90° landscape), upload **280×240 landscape** image
-- If `LCD_ROTATION = 0` (portrait), upload **240×280 portrait** image
-- Manual rotation required before upload
+Practical guidance:
+- Prefer generating images at the physical panel size (**240×280**) matching how you want it to appear.
+- If you change board rotation settings for the UI, do not assume it affects these image APIs.
 
 **Example for landscape mode (LCD_ROTATION=1):**
 
 ```bash
-# ✅ Correct - pre-rotate to landscape
-convert photo.jpg -rotate 90 -resize 280x240 rotated.jpg
+# ✅ Correct - rotate content, but keep output at raw panel size
+convert photo.jpg -rotate 90 -resize 240x280 rotated.jpg
 python3 upload_image.py 192.168.1.111 rotated.jpg --mode strip
 
-# ❌ Wrong - will display sideways
+# ❌ Wrong - assumes UI rotation affects the image API
 python3 upload_image.py 192.168.1.111 photo.jpg --mode strip
 ```
 
@@ -976,10 +837,10 @@ python3 upload_image.py 192.168.1.111 photo.jpg --mode strip
 
 | Upload Method | Rotation Handling | Image Dimensions | Notes |
 |---------------|-------------------|------------------|-------|
-| **Single-file SJPG** | ✅ Automatic (LVGL) | Physical (240×280) | LVGL rotates based on `LCD_ROTATION` |
-| **Strip-based** | ⚠️ Manual pre-rotate | Logical (280×240 for landscape) | Must match display orientation |
+| **Single-file** | ⚠️ Manual pre-rotate (client-side) | Raw panel (`LCD_WIDTH`×`LCD_HEIGHT`) | Rendered direct-to-LCD (no LVGL rotation) |
+| **Strip-based** | ⚠️ Manual pre-rotate (client-side) | Raw panel (`LCD_WIDTH`×`LCD_HEIGHT`) | Rendered direct-to-LCD (no LVGL rotation) |
 
-**Recommendation:** If your display uses `LCD_ROTATION != 0`, **prefer single-file upload** for images unless memory constraints force strip-based mode.
+**Recommendation:** Generate images for the device's raw panel dimensions (`LCD_WIDTH`×`LCD_HEIGHT`). Do not assume UI rotation affects these image APIs.
 
 ### Generic Applicability
 

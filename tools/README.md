@@ -25,10 +25,9 @@ This directory contains build-time and runtime tools for the ESP32 Energy Monito
 ## Runtime Tools (manual usage)
 
 ### upload_image.py ⭐ **Main Image Upload Tool**
-**Purpose:** Upload images to ESP32 device (JPG/SJPG) with automatic SJPG conversion and BGR color swap  
+**Purpose:** Upload images to ESP32 device (baseline JPEG) using either single upload or chunked fragments  
 **Features:**
 - Configurable strip height (8, 16, 32, 64 pixels)
-- BGR color swap for ST7789V2 displays
 - Debug mode (upload specific strips)
 - Progress display
 
@@ -44,7 +43,7 @@ python3 upload_image.py 192.168.1.111 photo.jpg --mode single
 python3 upload_image.py 192.168.1.111 photo.jpg --timeout 30
 
 # Debug: upload only strip 2
-python3 upload_image.py 192.168.1.111 photo.sjpg --mode strip --start 2 --end 2
+python3 upload_image.py 192.168.1.111 photo.jpg --mode strip --start 2 --end 2
 ```
 
 **Requirements:** `pip3 install Pillow requests`
@@ -64,17 +63,3 @@ python3 upload_image.py 192.168.1.111 photo.sjpg --mode strip --start 2 --end 2
 
 ### test240x280.jpg
 Example image for testing (240×280 pixels, matches display resolution)
-
----
-
-## Tool Consolidation History
-
-**Previous tools (now obsolete):**
-- `jpg_to_sjpg.py` → Merged into `upload_image.py`
-- `jpg2sjpg.sh` → Merged into `upload_image.py`
-- `upload_strips.py` → Merged into `upload_image.py`
-- `extract_strip.py` → Debug functionality in `upload_image.py`
-- `test_upload.py` → Replaced by `upload_image.py`
-- `test-image-api.sh` → Replaced by `upload_image.py`
-
-**Rationale:** Single unified tool with automatic mode selection and configurable strip height.

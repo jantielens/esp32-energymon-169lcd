@@ -163,6 +163,17 @@ bool ImageScreen::load_image(const uint8_t* jpeg_data, size_t jpeg_size) {
         Logger.logMessage("ImageScreen", "ERROR: Invalid image data");
         return false;
     }
+
+    // Determine whether this is a standard JPEG or an SJPG (split-JPEG) container.
+    // We support both, but LVGL must be given the correct "filename" so it picks
+    // the right decoder.
+    const bool is_jpeg = (jpeg_size >= 3 && jpeg_data[0] == 0xFF && jpeg_data[1] == 0xD8 && jpeg_data[2] == 0xFF);
+    const bool is_sjpg = (jpeg_size >= 4 && jpeg_data[0] == '_' && jpeg_data[1] == 'S' && jpeg_data[2] == 'J' && jpeg_data[3] == 'P');
+
+    if (!is_jpeg && !is_sjpg) {
+        Logger.logMessage("ImageScreen", "ERROR: Unsupported image format (expected JPEG or SJPG)");
+        return false;
+    }
     
     // Check if VFS is busy (another operation in progress)
     if (vfs_busy) {
@@ -202,7 +213,11 @@ bool ImageScreen::load_image(const uint8_t* jpeg_data, size_t jpeg_size) {
     
     // Load image from virtual "file"
     if (img_obj) {
-        lv_img_set_src(img_obj, "M:mem.sjpg");
+        if (is_sjpg) {
+            lv_img_set_src(img_obj, "M:mem.sjpg");
+        } else {
+            lv_img_set_src(img_obj, "M:mem.jpg");
+        }
         
         // Get decoded image dimensions for logging
         const void* src = lv_img_get_src(img_obj);

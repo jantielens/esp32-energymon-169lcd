@@ -11,7 +11,7 @@
 #include "board_config.h"
 #include <lvgl.h>
 
-// TJpgDec is compiled into LVGL's SJPG library
+// TJpgDec (tjpgd) decoder implementation
 // Declare the functions and types we need from tjpgd
 extern "C" {
     // TJpgDec types and constants
@@ -73,6 +73,7 @@ struct JpegOutputContext {
     int strip_y_offset;
     uint16_t* line_buffer;  // Buffer for one line of pixels
     int buffer_width;
+    bool output_bgr565;      // true=BGR565, false=RGB565
 };
 
 // TJpgDec uses a single opaque device pointer for the entire decode session.
@@ -104,7 +105,7 @@ static size_t jpeg_input_func(JDEC* jd, uint8_t* buff, size_t nbyte) {
     return to_read;
 }
 
-// TJpgDec output function - convert RGB888→BGR565 and write to LCD
+// TJpgDec output function - convert RGB888→(BGR565 or RGB565) and write to LCD
 static int jpeg_output_func(JDEC* jd, void* bitmap, JRECT* rect) {
     JpegSessionContext* session = (JpegSessionContext*)jd->device;
     JpegOutputContext* ctx = session ? &session->output : nullptr;
@@ -125,17 +126,25 @@ static int jpeg_output_func(JDEC* jd, void* bitmap, JRECT* rect) {
             return 0;
         }
         
-        // Convert RGB888 to BGR565 for this line
+        // Convert RGB888 to BGR565 or RGB565 for this line
         for (int x = 0; x < line_width; x++) {
             uint8_t r = *src++;
             uint8_t g = *src++;
             uint8_t b = *src++;
-            
-            // RGB888 → BGR565 conversion
-            // BGR565: BBBB BGGG GGGR RRRR
-            ctx->line_buffer[x] = ((b & 0xF8) << 8) |   // Blue in high bits
-                                  ((g & 0xFC) << 3) |   // Green in middle
-                                  (r >> 3);              // Red in low bits
+
+            if (ctx->output_bgr565) {
+                // RGB888 → BGR565 conversion
+                // BGR565: BBBB BGGG GGGR RRRR
+                ctx->line_buffer[x] = ((b & 0xF8) << 8) |   // Blue in high bits
+                                      ((g & 0xFC) << 3) |   // Green in middle
+                                      (r >> 3);             // Red in low bits
+            } else {
+                // RGB888 → RGB565 conversion
+                // RGB565: RRRR RGGG GGGB BBBB
+                ctx->line_buffer[x] = ((r & 0xF8) << 8) |   // Red in high bits
+                                      ((g & 0xFC) << 3) |   // Green in middle
+                                      (b >> 3);             // Blue in low bits
+            }
         }
         
         // Write line to LCD at correct position
@@ -170,7 +179,7 @@ void StripDecoder::begin(int image_width, int image_height) {
     Logger.logMessagef("StripDecoder", "Begin decode: %dx%d image", width, height);
 }
 
-bool StripDecoder::decode_strip(const uint8_t* jpeg_data, size_t jpeg_size, int strip_index) {
+bool StripDecoder::decode_strip(const uint8_t* jpeg_data, size_t jpeg_size, int strip_index, bool output_bgr565) {
     Logger.logBegin("Strip");
     Logger.logLinef("Strip %d: Y=%d, Size=%u, Heap=%u", 
                    strip_index, current_y, jpeg_size, ESP.getFreeHeap());
@@ -209,6 +218,7 @@ bool StripDecoder::decode_strip(const uint8_t* jpeg_data, size_t jpeg_size, int 
     session_ctx.output.strip_y_offset = current_y;
     session_ctx.output.line_buffer = line_buffer;
     session_ctx.output.buffer_width = width;
+    session_ctx.output.output_bgr565 = output_bgr565;
     Logger.logLinef("Output context: y_offset=%d buffer=%p width=%d",
                    current_y, line_buffer, width);
     

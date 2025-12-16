@@ -25,6 +25,180 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
+// ===== JPEG preflight (best-effort) =====
+// TJpgDec supports only a subset of baseline JPEGs (sampling/layout).
+// We do a lightweight header scan to fail fast with a descriptive error.
+struct JpegSofInfo {
+    bool found = false;
+    bool progressive = false;
+    uint16_t width = 0;
+    uint16_t height = 0;
+    uint8_t components = 0;
+    // Sampling factors (h,v) for component IDs 1(Y),2(Cb),3(Cr)
+    uint8_t y_h = 0, y_v = 0;
+    uint8_t cb_h = 0, cb_v = 0;
+    uint8_t cr_h = 0, cr_v = 0;
+};
+
+static bool jpeg_parse_sof_best_effort(const uint8_t* data, size_t size, JpegSofInfo& out) {
+    if (!data || size < 4) return false;
+    // Must start with SOI
+    if (!(data[0] == 0xFF && data[1] == 0xD8)) return false;
+
+    size_t i = 2;
+    while (i + 3 < size) {
+        // Find marker prefix 0xFF
+        if (data[i] != 0xFF) {
+            i++;
+            continue;
+        }
+
+        // Skip fill bytes 0xFF
+        while (i < size && data[i] == 0xFF) i++;
+        if (i >= size) break;
+
+        const uint8_t marker = data[i++];
+
+        // Standalone markers without length
+        if (marker == 0xD8 || marker == 0xD9) continue; // SOI/EOI
+        if (marker == 0x01 || (marker >= 0xD0 && marker <= 0xD7)) continue; // TEM / RSTn
+
+        // Start of Scan: header ends; no more metadata segments reliably parseable
+        if (marker == 0xDA) break;
+
+        if (i + 1 >= size) break;
+        const uint16_t seg_len = (uint16_t)((data[i] << 8) | data[i + 1]);
+        if (seg_len < 2) return false;
+        if (i + seg_len > size) return false;
+
+        // SOF0 (baseline DCT) or SOF2 (progressive DCT)
+        if (marker == 0xC0 || marker == 0xC2) {
+            out.found = true;
+            out.progressive = (marker == 0xC2);
+            if (seg_len < 8) return false;
+            const size_t p = i + 2;
+            // p+0: precision
+            out.height = (uint16_t)((data[p + 1] << 8) | data[p + 2]);
+            out.width  = (uint16_t)((data[p + 3] << 8) | data[p + 4]);
+            out.components = data[p + 5];
+            size_t cpos = p + 6;
+            for (uint8_t c = 0; c < out.components; c++) {
+                if (cpos + 2 >= i + seg_len) break;
+                const uint8_t cid = data[cpos + 0];
+                const uint8_t hv  = data[cpos + 1];
+                const uint8_t h = hv >> 4;
+                const uint8_t v = hv & 0x0F;
+                if (cid == 1) { out.y_h = h; out.y_v = v; }
+                else if (cid == 2) { out.cb_h = h; out.cb_v = v; }
+                else if (cid == 3) { out.cr_h = h; out.cr_v = v; }
+                cpos += 3;
+            }
+            return true;
+        }
+
+        // Move to next segment
+        i += seg_len;
+    }
+
+    return out.found;
+}
+
+static bool jpeg_preflight_tjpgd_supported(const uint8_t* data, size_t size, char* err, size_t err_sz) {
+    JpegSofInfo info;
+    if (!jpeg_parse_sof_best_effort(data, size, info) || !info.found) {
+        snprintf(err, err_sz, "Invalid JPEG header (missing SOF marker)");
+        return false;
+    }
+
+    if (info.progressive) {
+        snprintf(err, err_sz, "Unsupported JPEG: progressive encoding (use baseline JPEG)");
+        return false;
+    }
+
+    // Enforce exact panel dimensions for now (simplest D1 behavior)
+    if (info.width != LCD_WIDTH || info.height != LCD_HEIGHT) {
+        snprintf(err, err_sz, "Unsupported JPEG dimensions: got %ux%u, expected %dx%d", (unsigned)info.width, (unsigned)info.height, LCD_WIDTH, LCD_HEIGHT);
+        return false;
+    }
+
+    // Allow grayscale
+    if (info.components == 1) {
+        return true;
+    }
+
+    // Only accept 3-component JPEG with standard sampling patterns
+    if (info.components != 3) {
+        snprintf(err, err_sz, "Unsupported JPEG: expected 1 (grayscale) or 3 components, got %u", (unsigned)info.components);
+        return false;
+    }
+
+    // TJpgDec expects Cb/Cr to be 1x1
+    if (!(info.cb_h == 1 && info.cb_v == 1 && info.cr_h == 1 && info.cr_v == 1)) {
+        snprintf(err, err_sz, "Unsupported JPEG sampling: Cb/Cr must be 1x1 (got Cb %ux%u, Cr %ux%u)",
+                 (unsigned)info.cb_h, (unsigned)info.cb_v, (unsigned)info.cr_h, (unsigned)info.cr_v);
+        return false;
+    }
+
+    // Y can be 1x1 (4:4:4), 2x1 (4:2:2) or 2x2 (4:2:0). Reject uncommon layouts like 1x2.
+    const bool y_ok = (info.y_h == 1 && info.y_v == 1) || (info.y_h == 2 && info.y_v == 1) || (info.y_h == 2 && info.y_v == 2);
+    if (!y_ok) {
+        snprintf(err, err_sz, "Unsupported JPEG sampling: Y must be 1x1, 2x1, or 2x2 (got %ux%u)", (unsigned)info.y_h, (unsigned)info.y_v);
+        return false;
+    }
+
+    return true;
+}
+
+static bool jpeg_preflight_tjpgd_fragment_supported(const uint8_t* data, size_t size, int expected_width, int max_height, char* err, size_t err_sz) {
+    JpegSofInfo info;
+    if (!jpeg_parse_sof_best_effort(data, size, info) || !info.found) {
+        snprintf(err, err_sz, "Invalid JPEG header (missing SOF marker)");
+        return false;
+    }
+
+    if (info.progressive) {
+        snprintf(err, err_sz, "Unsupported JPEG: progressive encoding (use baseline JPEG)");
+        return false;
+    }
+
+    if ((int)info.width != expected_width) {
+        snprintf(err, err_sz, "Unsupported JPEG fragment width: got %u, expected %d", (unsigned)info.width, expected_width);
+        return false;
+    }
+
+    if (info.height == 0 || (int)info.height > max_height || (int)info.height > LCD_HEIGHT) {
+        snprintf(err, err_sz, "Unsupported JPEG fragment height: got %u (max %d)", (unsigned)info.height, max_height);
+        return false;
+    }
+
+    // Allow grayscale
+    if (info.components == 1) {
+        return true;
+    }
+
+    // Only accept 3-component JPEG with standard sampling patterns
+    if (info.components != 3) {
+        snprintf(err, err_sz, "Unsupported JPEG: expected 1 (grayscale) or 3 components, got %u", (unsigned)info.components);
+        return false;
+    }
+
+    // TJpgDec expects Cb/Cr to be 1x1
+    if (!(info.cb_h == 1 && info.cb_v == 1 && info.cr_h == 1 && info.cr_v == 1)) {
+        snprintf(err, err_sz, "Unsupported JPEG sampling: Cb/Cr must be 1x1 (got Cb %ux%u, Cr %ux%u)",
+                 (unsigned)info.cb_h, (unsigned)info.cb_v, (unsigned)info.cr_h, (unsigned)info.cr_v);
+        return false;
+    }
+
+    // Y can be 1x1 (4:4:4), 2x1 (4:2:2) or 2x2 (4:2:0).
+    const bool y_ok = (info.y_h == 1 && info.y_v == 1) || (info.y_h == 2 && info.y_v == 1) || (info.y_h == 2 && info.y_v == 2);
+    if (!y_ok) {
+        snprintf(err, err_sz, "Unsupported JPEG sampling: Y must be 1x1, 2x1, or 2x2 (got %ux%u)", (unsigned)info.y_h, (unsigned)info.y_v);
+        return false;
+    }
+
+    return true;
+}
+
 // Temperature sensor support (ESP32-C3, ESP32-S2, ESP32-S3, ESP32-C2, ESP32-C6, ESP32-H2)
 #if SOC_TEMP_SENSOR_SUPPORTED
 #include "driver/temperature_sensor.h"
@@ -870,6 +1044,7 @@ void handleImageUpload(AsyncWebServerRequest *request, String filename, size_t i
         // This clears the buffer to free memory AND prevents showing garbage on screen
         // Note: This does LVGL operations from AsyncWebServer task, but so does
         // display_show_image() later, and the deferred pattern handles the critical parts
+        display_hide_strip_image();
         display_hide_image();
         
         Logger.logLinef("Free heap after clear: %u bytes", ESP.getFreeHeap());
@@ -926,11 +1101,9 @@ void handleImageUpload(AsyncWebServerRequest *request, String filename, size_t i
         if (image_upload_buffer && image_upload_size > 0 && upload_state == UPLOAD_IN_PROGRESS) {
             Logger.logLinef("Upload complete: %u bytes", image_upload_size);
             
-            // Validate JPEG or SJPG magic bytes
+            // Validate plain JPEG magic bytes
             // JPEG: FF D8 FF
-            // SJPG: _SJP (5F 53 4A 50)
             bool is_jpeg = false;
-            bool is_sjpg = false;
             
             if (image_upload_size >= 3 && 
                 image_upload_buffer[0] == 0xFF && 
@@ -938,25 +1111,34 @@ void handleImageUpload(AsyncWebServerRequest *request, String filename, size_t i
                 image_upload_buffer[2] == 0xFF) {
                 is_jpeg = true;
                 Logger.logMessage("Upload", "Detected JPEG format");
-            } else if (image_upload_size >= 4 &&
-                       image_upload_buffer[0] == '_' &&
-                       image_upload_buffer[1] == 'S' &&
-                       image_upload_buffer[2] == 'J' &&
-                       image_upload_buffer[3] == 'P') {
-                is_sjpg = true;
-                Logger.logMessage("Upload", "Detected SJPG format");
             }
             
-            if (!is_jpeg && !is_sjpg) {
+            if (!is_jpeg) {
                 Logger.logLinef("Invalid header: %02X %02X %02X %02X", 
                     image_upload_buffer[0], image_upload_buffer[1], 
                     image_upload_buffer[2], image_upload_buffer[3]);
-                Logger.logEnd("ERROR: Not a valid JPEG or SJPG file");
+                Logger.logEnd("ERROR: Not a valid JPEG file");
                 free(image_upload_buffer);
                 image_upload_buffer = nullptr;
                 image_upload_size = 0;
                 upload_state = UPLOAD_IDLE;
-                request->send(400, "application/json", "{\"success\":false,\"message\":\"Invalid JPEG/SJPG file\"}");
+                request->send(400, "application/json", "{\"success\":false,\"message\":\"Invalid JPEG file\"}");
+                return;
+            }
+
+            // Best-effort header preflight so we can return a descriptive 400 before queuing
+            char preflight_err[160];
+            if (!jpeg_preflight_tjpgd_supported(image_upload_buffer, image_upload_size, preflight_err, sizeof(preflight_err))) {
+                Logger.logLinef("ERROR: JPEG preflight failed: %s", preflight_err);
+                Logger.logEnd();
+                free(image_upload_buffer);
+                image_upload_buffer = nullptr;
+                image_upload_size = 0;
+                upload_state = UPLOAD_IDLE;
+
+                char resp[256];
+                snprintf(resp, sizeof(resp), "{\"success\":false,\"message\":\"%s\"}", preflight_err);
+                request->send(400, "application/json", resp);
                 return;
             }
             
@@ -1007,27 +1189,41 @@ void handleImageDelete(AsyncWebServerRequest *request) {
     pending_image_op.size = 0;
     pending_image_op.dismiss = true;
     upload_state = UPLOAD_READY_TO_DISPLAY;  // Reuse state to trigger processing
+    pending_op_id++;  // Ensure main loop processes this dismiss request
     
     request->send(200, "application/json", "{\"success\":true,\"message\":\"Image dismiss queued\"}");
 }
 
-// POST /api/display/strip?index=N&total=T&width=W&height=H[&timeout=MS] - Upload single strip (stateless/atomic)
+// POST /api/display/image/chunks?index=N&total=T&width=W&height=H[&timeout=MS] - Upload a single JPEG chunk/fragment (stateless/atomic)
 void handleStripUpload(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-    // Extract required metadata from query parameters
-    if (!request->hasParam("index") || !request->hasParam("total") || 
-        !request->hasParam("width") || !request->hasParam("height")) {
-        if (index + len >= total) {  // Final chunk
+    // Extract required metadata from query parameters.
+    // Be explicit about reading URL (query) params on POST requests.
+    if (index == 0) {
+        const bool has_required =
+            request->hasParam("index", false) &&
+            request->hasParam("total", false) &&
+            request->hasParam("width", false) &&
+            request->hasParam("height", false);
+
+        if (!has_required) {
             request->send(400, "application/json", "{\"success\":false,\"message\":\"Missing required parameters: index, total, width, height\"}");
+            return;
         }
+    }
+
+    if (!request->hasParam("index", false) || !request->hasParam("total", false) ||
+        !request->hasParam("width", false) || !request->hasParam("height", false)) {
+        // If parameters are missing mid-request, fail closed.
+        request->send(400, "application/json", "{\"success\":false,\"message\":\"Missing required parameters: index, total, width, height\"}");
         return;
     }
-    
-    int stripIndex = request->getParam("index")->value().toInt();
-    int totalStrips = request->getParam("total")->value().toInt();
-    int imageWidth = request->getParam("width")->value().toInt();
-    int imageHeight = request->getParam("height")->value().toInt();
-    unsigned long timeoutMs = request->hasParam("timeout") ? 
-        request->getParam("timeout")->value().toInt() * 1000 : 10000;
+
+    int stripIndex = request->getParam("index", false)->value().toInt();
+    int totalStrips = request->getParam("total", false)->value().toInt();
+    int imageWidth = request->getParam("width", false)->value().toInt();
+    int imageHeight = request->getParam("height", false)->value().toInt();
+    unsigned long timeoutMs = request->hasParam("timeout", false) ?
+        request->getParam("timeout", false)->value().toInt() * 1000 : 10000;
     
     if (index == 0) {
         // First chunk of this strip
@@ -1114,15 +1310,31 @@ void handleStripUpload(AsyncWebServerRequest *request, uint8_t *data, size_t len
             free((void*)current_strip_buffer);
             current_strip_buffer = nullptr;
             Logger.logEnd();
-            request->send(500, "application/json", "{\"success\":false,\"message\":\"Invalid JPEG data\"}");
+            request->send(400, "application/json", "{\"success\":false,\"message\":\"Invalid JPEG data\"}");
+            return;
+        }
+
+        // Best-effort header preflight so we can return a descriptive 400 before decoding
+        char preflight_err[160];
+        const int remaining_height = imageHeight;  // conservative bound for a single fragment
+        if (!jpeg_preflight_tjpgd_fragment_supported(current_strip_buffer, current_strip_size, imageWidth, remaining_height, preflight_err, sizeof(preflight_err))) {
+            Logger.logLinef("ERROR: JPEG fragment preflight failed: %s", preflight_err);
+            free((void*)current_strip_buffer);
+            current_strip_buffer = nullptr;
+            Logger.logEnd();
+
+            char resp[256];
+            snprintf(resp, sizeof(resp), "{\"success\":false,\"message\":\"%s\"}", preflight_err);
+            request->send(400, "application/json", resp);
             return;
         }
         
         // Decode strip synchronously (device pointer bug is fixed)
-        bool success = display_decode_strip(
+        bool success = display_decode_strip_ex(
             current_strip_buffer,
             current_strip_size,
-            stripIndex
+            stripIndex,
+            false  // output_bgr565=false: accept normal RGB JPEG input
         );
         
         // Free the buffer after decoding
@@ -1224,24 +1436,27 @@ void web_portal_init(DeviceConfig *config) {
     );
     
     // Image display endpoints
+    // Register the more specific /chunks endpoint before /image.
+    // Some handler matching modes are prefix-based; ordering avoids accidental capture.
+
+    // Chunked image display endpoint (stateless/atomic)
+    // URL format: /api/display/image/chunks?index=N&total=T&width=W&height=H[&timeout=MS]
+    // Each request is self-contained with all metadata
+    // Uses body handler since we're sending raw binary data
+    server->on(
+        "/api/display/image/chunks",
+        HTTP_POST,
+        [](AsyncWebServerRequest *request) {},
+        NULL,  // No file upload handler
+        handleStripUpload  // Body handler for raw binary data
+    );
+
     server->on("/api/display/image", HTTP_POST,
         [](AsyncWebServerRequest *request) {},
         handleImageUpload
     );
     
     server->on("/api/display/image", HTTP_DELETE, handleImageDelete);
-    
-    // Strip-by-strip image display endpoint (stateless/atomic)
-    // URL format: /api/display/strip?index=N&total=T&width=W&height=H[&timeout=MS]
-    // Each request is self-contained with all metadata
-    // Uses body handler since we're sending raw binary data
-    server->on(
-        "/api/display/strip",
-        HTTP_POST,
-        [](AsyncWebServerRequest *request) {},
-        NULL,  // No file upload handler
-        handleStripUpload  // Body handler for raw binary data
-    );
     
     // 404 handler
     server->onNotFound([](AsyncWebServerRequest *request) {
@@ -1340,20 +1555,34 @@ void web_portal_process_pending() {
     
     if (pending_image_op.dismiss) {
         // Dismiss current image
+        display_hide_strip_image();
         display_hide_image();
         pending_image_op.dismiss = false;
         upload_state = UPLOAD_IDLE;
     } else if (pending_image_op.buffer && pending_image_op.size > 0) {
         // Display new image with custom timeout and accurate start time
-        bool success = display_show_image(pending_image_op.buffer, pending_image_op.size, 
-                                         pending_image_op.timeout_ms, pending_image_op.start_time);
-        
-        // Free the upload buffer (display_show_image makes its own copy)
+        // LVGL image widgets are not used for the image upload endpoints.
+        // We render via a direct-to-LCD JPEG decode path (TJpgDec / tjpgd) to keep memory bounded.
+        const uint8_t* buf = pending_image_op.buffer;
+        const size_t sz = pending_image_op.size;
+
+        bool success = false;
+        // /api/display/image is JPEG-only and rendered via TJpgDec direct-to-LCD.
+        // Treat full JPEG as a single "strip" and decode directly to LCD.
+        if (!display_start_strip_upload(LCD_WIDTH, LCD_HEIGHT, pending_image_op.timeout_ms, pending_image_op.start_time)) {
+            Logger.logMessage("Portal", "ERROR: Failed to init direct image screen for JPEG");
+            success = false;
+        } else {
+            // output_bgr565=false: accept normal RGB JPEG input on an LCD configured for RGB.
+            success = display_decode_strip_ex(buf, sz, 0, false);
+        }
+
+        // Free the upload buffer after synchronous decode
         free((void*)pending_image_op.buffer);
         pending_image_op.buffer = nullptr;
         pending_image_op.size = 0;
         upload_state = UPLOAD_IDLE;
-        
+
         if (!success) {
             Logger.logMessage("Portal", "ERROR: Failed to display image");
         }

@@ -3,7 +3,7 @@
 Home Assistant AppDaemon App: Camera to ESP32 Image Display
 
 Fetches camera snapshots from Home Assistant and sends them to ESP32 devices
-with automatic BGR color conversion and SJPG format conversion.
+as a baseline JPEG via the Image Display API.
 
 Installation:
   1. Copy this file to: /addon_configs/a0d7b954_appdaemon/apps/
@@ -24,11 +24,8 @@ Requirements:
 
 import appdaemon.plugins.hass.hassapi as hass
 import os
-import tempfile
-import subprocess
-import math
-from PIL import Image
 import io
+from PIL import Image
 import requests
 
 class CameraToESP32(hass.Hass):
@@ -42,9 +39,12 @@ class CameraToESP32(hass.Hass):
         self.default_esp32_ip = self.args.get("default_esp32_ip", None)
         
         # ESP32 display dimensions (resize images to fit)
-        # ST7789V2 is 280 wide x 240 tall in landscape orientation
-        self.display_width = self.args.get("display_width", 280)
-        self.display_height = self.args.get("display_height", 240)
+        # Raw panel coordinates (default matches firmware expectations)
+        self.display_width = self.args.get("display_width", 240)
+        self.display_height = self.args.get("display_height", 280)
+
+        # JPEG quality for re-encoding (baseline JPEG, TJpgDec-friendly)
+        self.jpeg_quality = int(self.args.get("jpeg_quality", 80))
         
         # Listen for camera_to_esp32 events
         self.listen_event(self.handle_event, "camera_to_esp32")
@@ -74,7 +74,7 @@ class CameraToESP32(hass.Hass):
         self.process_camera_snapshot(camera_entity, esp32_ip, timeout)
     
     def process_camera_snapshot(self, camera_entity, esp32_ip, timeout=10):
-        """Fetch camera snapshot, convert to SJPG, and upload to ESP32"""
+        """Fetch camera snapshot, resize/letterbox, and upload as baseline JPEG"""
         
         try:
             # Step 1: Fetch camera snapshot
@@ -87,25 +87,20 @@ class CameraToESP32(hass.Hass):
             
             self.log(f"Fetched camera snapshot: {len(jpeg_data)} bytes")
             
-            # Step 2: Resize and convert RGB → BGR
-            self.log(f"Resizing to {self.display_width}x{self.display_height} and converting RGB to BGR")
-            bgr_jpeg_data = self.convert_rgb_to_bgr(jpeg_data, self.display_width, self.display_height)
-            
-            if not bgr_jpeg_data:
-                self.error("Failed to convert to BGR")
+            # Step 2: Resize/letterbox and (re)encode as baseline JPEG
+            self.log(f"Resizing to {self.display_width}x{self.display_height} and encoding as baseline JPEG")
+            out_jpeg = self.resize_and_encode_jpeg(
+                jpeg_data,
+                target_width=self.display_width,
+                target_height=self.display_height,
+                quality=self.jpeg_quality,
+            )
+
+            if not out_jpeg:
+                self.error("Failed to resize/encode JPEG")
                 return
-            
-            self.log(f"Resized and converted to BGR JPEG: {len(bgr_jpeg_data)} bytes")
-            
-            # Step 3: Convert to SJPG format
-            self.log("Converting to SJPG format")
-            sjpg_data = self.convert_to_sjpg(bgr_jpeg_data)
-            
-            if not sjpg_data:
-                self.error("Failed to convert to SJPG")
-                return
-            
-            self.log(f"Converted to SJPG: {len(sjpg_data)} bytes")
+
+            self.log(f"Prepared JPEG: {len(out_jpeg)} bytes")
             
             # Step 4: Test ESP32 connectivity
             self.log(f"Testing ESP32 connectivity at {esp32_ip}")
@@ -118,7 +113,7 @@ class CameraToESP32(hass.Hass):
             
             # Step 5: Upload to ESP32
             self.log(f"Uploading to ESP32 at {esp32_ip} with {timeout}s timeout")
-            success = self.upload_to_esp32(sjpg_data, esp32_ip, timeout)
+            success = self.upload_to_esp32(out_jpeg, esp32_ip, timeout)
             
             if success:
                 self.log(f"[OK] Upload successful!")
@@ -150,8 +145,8 @@ class CameraToESP32(hass.Hass):
             self.error(f"Failed to fetch camera snapshot: {e}")
             return None
     
-    def convert_rgb_to_bgr(self, jpeg_data, target_width=None, target_height=None):
-        """Convert RGB JPEG to BGR JPEG using PIL, with optional resizing that maintains aspect ratio"""
+    def resize_and_encode_jpeg(self, jpeg_data, target_width=None, target_height=None, quality=80):
+        """Resize/letterbox and encode as baseline JPEG (TJpgDec-friendly)."""
         try:
             # Load JPEG from bytes
             img = Image.open(io.BytesIO(jpeg_data))
@@ -191,122 +186,34 @@ class CameraToESP32(hass.Hass):
             # Convert to RGB if needed (handles RGBA, grayscale, etc.)
             if img.mode != 'RGB':
                 img = img.convert('RGB')
-            
-            # Split into R, G, B channels
-            r, g, b = img.split()
-            
-            # Merge back as B, G, R (swapping R and B)
-            img_bgr = Image.merge('RGB', (b, g, r))
-            
-            # Save back to JPEG bytes with lower quality to reduce size
+
+            # Save back to baseline JPEG bytes (no progressive/optimize)
             output = io.BytesIO()
-            img_bgr.save(output, format='JPEG', quality=70, optimize=True)
-            bgr_jpeg_data = output.getvalue()
-            
-            return bgr_jpeg_data
-            
-        except Exception as e:
-            self.error(f"Failed to convert RGB to BGR: {e}")
-            return None
-    
-    def convert_to_sjpg(self, jpeg_data):
-        """Convert JPEG to SJPG format using inline conversion (no subprocess)"""
-        try:
-            # Load JPEG from bytes
-            im = Image.open(io.BytesIO(jpeg_data))
-            width, height = im.size
-            
-            self.log(f"Image size: {width}x{height}")
-            
-            # SJPG parameters
-            JPEG_SPLIT_HEIGHT = 16
-            SJPG_FILE_FORMAT_VERSION = "V1.00"
-            
-            splits = math.ceil(height / JPEG_SPLIT_HEIGHT)
-            self.log(f"Splitting into {splits} strips of {JPEG_SPLIT_HEIGHT}px height")
-            
-            # Create JPEG strips
-            lenbuf = []
-            sjpeg_data = bytearray()
-            
-            row_remaining = height
-            for i in range(splits):
-                if row_remaining < JPEG_SPLIT_HEIGHT:
-                    crop = im.crop((0, i * JPEG_SPLIT_HEIGHT, width, row_remaining + i * JPEG_SPLIT_HEIGHT))
-                else:
-                    crop = im.crop((0, i * JPEG_SPLIT_HEIGHT, width, JPEG_SPLIT_HEIGHT + i * JPEG_SPLIT_HEIGHT))
-                
-                row_remaining = row_remaining - JPEG_SPLIT_HEIGHT
-                
-                # Save crop as JPEG to bytes with lower quality
-                crop_bytes = io.BytesIO()
-                crop.save(crop_bytes, format='JPEG', quality=60, optimize=True)
-                crop_data = crop_bytes.getvalue()
-                
-                sjpeg_data += crop_data
-                lenbuf.append(len(crop_data))
-            
-            self.log(f"Created {len(lenbuf)} JPEG strips, total {len(sjpeg_data)} bytes")
-            
-            # Build SJPG header
-            header = bytearray()
-            header += bytearray("_SJPG__".encode("UTF-8"))
-            header += bytearray(("\x00" + SJPG_FILE_FORMAT_VERSION + "\x00").encode("UTF-8"))
-            header += width.to_bytes(2, byteorder='little')
-            header += height.to_bytes(2, byteorder='little')
-            header += splits.to_bytes(2, byteorder='little')
-            header += int(JPEG_SPLIT_HEIGHT).to_bytes(2, byteorder='little')
-            
-            for item_len in lenbuf:
-                header += item_len.to_bytes(2, byteorder='little')
-            
-            # Combine header + data
-            sjpeg = header + sjpeg_data
-            
-            self.log(f"SJPG total size: {len(sjpeg)} bytes (header: {len(header)}, data: {len(sjpeg_data)})")
-            
-            return bytes(sjpeg)
+            img.save(
+                output,
+                format='JPEG',
+                quality=quality,
+                subsampling=2,   # 4:2:0
+                progressive=False,
+                optimize=False,
+            )
+            return output.getvalue()
             
         except Exception as e:
-            self.error(f"Failed to convert to SJPG: {e}")
-            import traceback
-            self.error(traceback.format_exc())
+            self.error(f"Failed to resize/encode JPEG: {e}")
             return None
-    
-    def upload_to_esp32(self, sjpg_data, esp32_ip, timeout=10):
-        """Upload SJPG data to ESP32 via HTTP POST using curl"""
+
+    def upload_to_esp32(self, jpeg_data, esp32_ip, timeout=10):
+        """Upload JPEG data to ESP32 via HTTP multipart POST."""
         try:
-            url = f"http://{esp32_ip}/api/display/image?timeout={timeout}"
-            
-            # Save SJPG to temporary file for curl
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.sjpg') as tmp:
-                tmp.write(sjpg_data)
-                tmp_path = tmp.name
-            
-            try:
-                # Use curl for upload (reliable multipart/form-data)
-                result = subprocess.run(
-                    ['curl', '-X', 'POST', '-F', f'image=@{tmp_path}', url],
-                    capture_output=True,
-                    text=True,
-                    timeout=10
-                )
-                
-                self.log(f"Upload response: {result.stdout}")
-                
-                if result.returncode == 0 and '"success":true' in result.stdout:
-                    return True
-                else:
-                    self.error(f"Upload failed: {result.stdout}")
-                    return False
-                    
-            finally:
-                # Clean up temp file
-                os.unlink(tmp_path)
-                
-        except subprocess.TimeoutExpired:
-            self.error("Upload timeout")
-            return False
+            url = f"http://{esp32_ip}/api/display/image"
+            files = {'image': ('image.jpg', jpeg_data, 'image/jpeg')}
+            params = {'timeout': timeout}
+
+            response = requests.post(url, files=files, params=params, timeout=15)
+            self.log(f"Upload response: HTTP {response.status_code} {response.text}")
+
+            return response.status_code == 200 and '"success":true' in response.text
         except Exception as e:
             self.error(f"Upload error: {e}")
             import traceback

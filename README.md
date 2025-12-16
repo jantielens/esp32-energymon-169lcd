@@ -98,7 +98,7 @@ See [docs/developer/building-from-source.md](docs/developer/building-from-source
 - **[Building from Source](docs/developer/building-from-source.md)** - Setup, build system, scripts
 - **[Multi-Board Support](docs/developer/multi-board-support.md)** - Adding new board variants
 - **[LVGL Display System](docs/developer/lvgl-display-system.md)** - Display architecture, BGR fix
-- **[Image Display Implementation](docs/developer/image-display-implementation.md)** - Technical deep-dive: SJPG, VFS, threading
+- **[Image Display Implementation](docs/developer/image-display-implementation.md)** - Technical deep-dive: baseline JPEG, direct-to-LCD decode, chunk uploads
 - **[Web Portal API](docs/developer/web-portal-api.md)** - REST API reference
 - **[Adding Features](docs/developer/adding-features.md)** - Code structure, contributing
 - **[Icon System](docs/developer/icon-system.md)** - PNG to LVGL conversion

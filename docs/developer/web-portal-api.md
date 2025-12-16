@@ -393,12 +393,12 @@ Returns current portal operating mode (AP or WiFi connected).
 
 ### `POST /api/display/image`
 
-Upload and display a JPEG or SJPG image on the LCD with configurable timeout.
+Upload and display a **plain baseline JPEG** image on the LCD with configurable timeout.
 
 **Request:**
 - **Content-Type**: `multipart/form-data`
 - **Field name**: `image`
-- **File**: JPEG or Split JPEG (SJPG) file
+- **File**: JPEG file
 - **Max size**: 100KB
 - **Query parameter**: `timeout` (optional) - Display duration in seconds
 
@@ -421,7 +421,7 @@ Upload and display a JPEG or SJPG image on the LCD with configurable timeout.
 ```json
 {
   "success": false,
-  "message": "Invalid JPEG/SJPG file"
+  "message": "Invalid JPEG file"
 }
 ```
 
@@ -434,10 +434,11 @@ Upload and display a JPEG or SJPG image on the LCD with configurable timeout.
 ```
 
 **Notes:**
-- Supported formats: JPEG (0xFF 0xD8 0xFF) and SJPG (0x5F 0x53 0x4A 0x50) magic bytes
+- Supported format: JPEG (0xFF 0xD8 0xFF)
 - Images stored in RAM only (lost on reboot)
-- SJPG format recommended for memory efficiency (~35KB RAM vs 134KB for full JPEG)
-- Automatic RGB↔BGR color conversion required (see preprocessing tools)
+- JPEG decoding supports a subset of baseline JPEG encodings (progressive JPEG is rejected)
+- Image dimensions must match the panel (currently `240×280`)
+- No client-side RGB↔BGR conversion is required for this API
 - Concurrent uploads: second upload waits up to 1 second for first to complete
 - After timeout, display returns to power screen automatically
 - `timeout=0` makes image permanent until manually dismissed
@@ -456,9 +457,35 @@ curl -X POST -F "image=@photo.jpg" 'http://energy-monitor.local/api/display/imag
 # Display for 1 hour
 curl -X POST -F "image=@photo.jpg" 'http://energy-monitor.local/api/display/image?timeout=3600'
 
-# Using preprocessing script (handles RGB↔BGR conversion)
+# Using the provided upload tool
 cd tools
-./test-image-api.sh 192.168.1.100 photo.jpg
+python3 upload_image.py 192.168.1.100 photo.jpg --mode single
+```
+
+### `POST /api/display/image/chunks`
+
+Upload and display an image as a sequence of **independent JPEG fragments** (strips).
+
+**Request:**
+- **Content-Type**: `application/octet-stream`
+- **Body**: a single JPEG fragment (one strip)
+- **Query parameters**:
+  - `index` (required): 0-based strip index (must be uploaded in order)
+  - `total` (required): total number of strips
+  - `width` (required): full image width
+  - `height` (required): full image height
+  - `timeout` (optional): display timeout in seconds
+
+**Notes:**
+- Each request is stateless/atomic: the device allocates a buffer for that request, decodes, then frees it.
+- The device advances the vertical offset based on each decoded fragment's height, so fragments must be sent sequentially.
+
+**Example:**
+```bash
+curl -X POST \
+  --data-binary @strip0.jpg \
+  -H 'Content-Type: application/octet-stream' \
+  'http://energy-monitor.local/api/display/image/chunks?index=0&total=9&width=240&height=280&timeout=10'
 ```
 
 ### `DELETE /api/display/image`
@@ -485,7 +512,7 @@ curl -X DELETE http://energy-monitor.local/api/display/image
 
 **See Also:**
 - [Image Display User Guide](../user/image-display.md) - Usage examples and troubleshooting
-- [Image Display Implementation](image-display-implementation.md) - Technical deep-dive: SJPG format, VFS, threading
+- [Image Display Implementation](image-display-implementation.md) - Technical deep-dive
 - [Home Assistant Integration](../user/home-assistant-integration.md) - Camera snapshot automation
 
 ## System Control

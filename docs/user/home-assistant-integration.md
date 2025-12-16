@@ -8,14 +8,14 @@ This guide shows how to send camera images from Home Assistant to your ESP32 dev
 
 **Architecture:**
 ```
-[HA Camera] → [AppDaemon Script] → Resize + BGR → SJPG Format → [ESP32 Display]
+[HA Camera] → [AppDaemon Script] → Resize + baseline JPEG → [ESP32 Display]
 ```
 
 **Features:**
-- Single Python file - no external dependencies
+- Single Python file + Pillow (image processing)
 - Automatic aspect ratio preservation (letterboxing)
 - Optimized file sizes for ESP32 memory
-- Memory-safe processing (~20KB final size)
+- Memory-safe processing (keeps uploads within device limits)
 
 ---
 
@@ -80,9 +80,7 @@ cd /addon_configs/a0d7b954_appdaemon/apps/
 
 This is a single self-contained script that handles:
 - Camera snapshot fetching
-- RGB→BGR color conversion
 - Image resizing with aspect ratio preservation
-- SJPG format conversion
 - Upload to ESP32 via HTTP
 
 **Location:** Included in this repository at:
@@ -295,7 +293,9 @@ Most cameras allow setting snapshot resolution in their integration settings:
 
 1. Go to **Settings → Devices & Services**
 2. Find your camera integration
-3. Configure snapshot width/height to 240×280 or 280×240
+3. Configure snapshot width/height to match the panel: 240×280
+
+If your camera/integration only supports 280×240, keep that and rotate on the client before upload.
 
 ---
 
@@ -310,8 +310,8 @@ Most cameras allow setting snapshot resolution in their integration settings:
 ```
 INFO camera_to_esp32: Processing camera snapshot: camera.front_door → 192.168.1.111
 INFO camera_to_esp32: Fetched camera snapshot: 45123 bytes
-INFO camera_to_esp32: Converted to BGR JPEG
-INFO camera_to_esp32: Converted to SJPG: 22456 bytes
+INFO camera_to_esp32: Resizing to 240x280 and encoding as baseline JPEG
+INFO camera_to_esp32: Prepared JPEG: 22456 bytes
 INFO camera_to_esp32: Upload successful!
 ```
 
@@ -356,21 +356,21 @@ INFO camera_to_esp32: Upload successful!
 
 #### Image Colors Look Wrong
 
-**Problem:** BGR conversion not applied or applied twice
+**Problem:** Image was preprocessed with RGB↔BGR swapping
 
 **Solution:**
-1. Verify you're using the AppDaemon app (not uploading raw JPEGs)
-2. Check AppDaemon logs confirm "Converted to BGR JPEG" step
+1. Ensure you are uploading a normal RGB JPEG (no client-side RGB↔BGR conversion)
+2. If you have scripts that swap channels, disable that step
 3. ESP32 firmware should be v1.4.0+
 
 #### Image Not Showing on ESP32
 
-**Problem:** Invalid SJPG format or upload incomplete
+**Problem:** Invalid/unsupported JPEG encoding or upload incomplete
 
 **Solution:**
 1. Check ESP32 serial logs for errors
-2. Verify SJPG file is valid (should start with `_SJP` magic bytes)
-3. Try uploading via test script first: `./test-image-api.sh 192.168.1.111 test.jpg`
+2. Ensure the JPEG is baseline (not progressive) and uses standard chroma subsampling
+3. Try uploading via the provided tool first: `python3 tools/upload_image.py 192.168.1.111 test.jpg --mode single`
 
 ---
 
@@ -402,18 +402,15 @@ If cameras aren't set up yet, you can test with a file:
 
 **Typical Processing Times:**
 - Camera snapshot fetch: 100-500ms
-- Resize + BGR conversion: 50-150ms
-- SJPG conversion: 100-200ms
-- HTTP upload (curl): 100-200ms
+- Resize + JPEG (re)encode: 50-250ms
+- HTTP upload: 100-200ms
 - **Total: ~500ms-1s** from trigger to display
 
 **Network Bandwidth:**
 - Camera snapshot: 30-50KB (depends on quality/resolution)
-- SJPG upload: 14-22KB (optimized for ESP32)
+- JPEG upload: typically 15-60KB (depends on quality/resolution)
 
 **ESP32 Memory Usage:**
-- ~20KB for SJPG buffer
-- ~13KB for strip decode buffer
 - Automatically freed after timeout expires (default: 10 seconds, configurable)
 
 ---

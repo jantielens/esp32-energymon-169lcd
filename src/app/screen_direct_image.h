@@ -32,7 +32,7 @@ public:
     
     // Decode and display a single strip
     // Returns: true on success, false on failure
-    bool decode_strip(const uint8_t* jpeg_data, size_t jpeg_size, int strip_index);
+    bool decode_strip(const uint8_t* jpeg_data, size_t jpeg_size, int strip_index, bool output_bgr565 = true);
     
     // End strip upload session
     void end_strip_session();

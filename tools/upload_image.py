@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
-"""
-ESP32 Image Upload Tool - Unified strip-based and single-file upload
+"""ESP32 Image Upload Tool
 
-Handles both preprocessing (JPG → SJPG with BGR swap) and uploading.
-Supports configurable strip height.
+Uploads a plain baseline JPEG to the device.
+
+Endpoints:
+  - POST /api/display/image          (single upload via multipart)
+  - POST /api/display/image/chunks   (strip/chunk uploads via raw body)
+
+Notes:
+  - Firmware expects normal RGB JPEG input; no client-side BGR swapping.
+  - Firmware may reject unsupported JPEG encodings; this tool re-encodes strips/single
+    as baseline JPEG with 4:2:0 chroma subsampling by default.
 
 Usage:
-    # Strip-based upload (memory efficient, required for large images)
+    # Chunk/strip upload (memory efficient)
     python3 upload_image.py 192.168.1.111 photo.jpg --mode strip --strip-height 32
 
-    # Single-file upload (faster, for small images)
+    # Single-file upload
     python3 upload_image.py 192.168.1.111 photo.jpg --mode single
-    
-    # Upload pre-converted SJPG
-    python3 upload_image.py 192.168.1.111 photo.sjpg --mode strip
-    
-    # Debug: upload specific strip range
-    python3 upload_image.py 192.168.1.111 photo.sjpg --mode strip --start 2 --end 2
 
 Requirements:
     - Python 3.6+
@@ -25,13 +26,11 @@ Requirements:
 """
 
 import argparse
-import struct
 import sys
 import os
-import tempfile
 import math
 import requests
-from pathlib import Path
+from typing import List, Tuple
 
 try:
     from PIL import Image
@@ -41,184 +40,64 @@ except ImportError:
 
 
 # ============================================================================
-# SJPG Conversion (with BGR color swap)
+# JPEG helpers
 # ============================================================================
 
-def jpg_to_sjpg(input_jpg, strip_height=32, swap_bgr=True):
-    """
-    Convert JPG to SJPG format with optional BGR color swap.
-    
-    Args:
-        input_jpg: Path to input JPG file
-        strip_height: Height of each strip in pixels (8, 16, 32, 64...)
-        swap_bgr: Whether to swap R↔B channels for BGR displays
-        
-    Returns:
-        bytes: SJPG file data
-    """
-    print(f"Converting {input_jpg} to SJPG (strip_height={strip_height}, bgr={swap_bgr})")
-    
-    # Load and prepare image
-    img = Image.open(input_jpg)
+def _load_rgb_image(path: str) -> Image.Image:
+    img = Image.open(path)
     if img.mode != 'RGB':
         img = img.convert('RGB')
-    
+    return img
+
+
+def _encode_baseline_jpeg(img: Image.Image, quality: int = 90) -> bytes:
+    """Encode as baseline JPEG with 4:2:0 subsampling (TJpgDec-friendly)."""
+    import io
+    buffer = io.BytesIO()
+    img.save(
+        buffer,
+        format='JPEG',
+        quality=quality,
+        subsampling=2,      # 4:2:0
+        progressive=False,
+        optimize=False,
+    )
+    return buffer.getvalue()
+
+
+def image_to_jpeg_bytes(input_path: str, quality: int = 90) -> Tuple[int, int, bytes]:
+    img = _load_rgb_image(input_path)
     width, height = img.size
-    print(f"  Image: {width}×{height} pixels")
-    
-    # BGR color swap if needed
-    if swap_bgr:
-        r, g, b = img.split()
-        img = Image.merge('RGB', (b, g, r))
-        print(f"  Swapped R↔B for BGR display")
-    
-    # Split into strips and encode as JPEG
+    jpeg_data = _encode_baseline_jpeg(img, quality=quality)
+    return width, height, jpeg_data
+
+
+def image_to_jpeg_strips(input_path: str, strip_height: int, quality: int = 90) -> Tuple[int, int, int, List[bytes]]:
+    img = _load_rgb_image(input_path)
+    width, height = img.size
     num_strips = math.ceil(height / strip_height)
-    print(f"  Splitting into {num_strips} strips ({strip_height}px each)")
-    
-    strip_data = []
-    strip_lengths = []
-    
+    strips: List[bytes] = []
+
     for i in range(num_strips):
         y_start = i * strip_height
         y_end = min((i + 1) * strip_height, height)
-        
-        # Crop strip
         strip_img = img.crop((0, y_start, width, y_end))
-        
-        # Save as JPEG to bytes
-        import io
-        buffer = io.BytesIO()
-        strip_img.save(buffer, format='JPEG', quality=90)
-        jpeg_data = buffer.getvalue()
-        
-        strip_data.append(jpeg_data)
-        strip_lengths.append(len(jpeg_data))
-        
-        print(f"    Strip {i}: {len(jpeg_data)} bytes ({y_end - y_start}px high)")
-    
-    # Build SJPG header
-    header = bytearray()
-    
-    # Magic bytes: "_SJPG__" (7 bytes)
-    header += b'_SJPG__'
-    
-    # Version: "\x00V1.00\x00" (7 bytes)
-    header += b'\x00V1.00\x00'
-    
-    # Width (2 bytes, little-endian)
-    header += struct.pack('<H', width)
-    
-    # Height (2 bytes, little-endian)
-    header += struct.pack('<H', height)
-    
-    # Number of strips (2 bytes, little-endian)
-    header += struct.pack('<H', num_strips)
-    
-    # Strip height (2 bytes, little-endian)
-    header += struct.pack('<H', strip_height)
-    
-    # Strip length table (2 bytes each, little-endian)
-    # Note: This matches the existing conversion logic used elsewhere in this repo
-    # (e.g. tools/jpg_to_sjpg.py and tools/camera_to_esp32.py) and the LVGL SJPG decoder.
-    for length in strip_lengths:
-        if length > 0xFFFF:
-            raise ValueError(f"Strip too large for SJPG u16 length field: {length} bytes")
-        header += struct.pack('<H', length)
-    
-    # Combine header + all strip data
-    sjpg_data = header + b''.join(strip_data)
-    
-    print(f"  SJPG created: {len(sjpg_data)} bytes (header: {len(header)})")
-    
-    return sjpg_data
+        strips.append(_encode_baseline_jpeg(strip_img, quality=quality))
 
-
-# ============================================================================
-# SJPG Parsing
-# ============================================================================
-
-def parse_sjpg(sjpg_data):
-    """
-    Parse SJPG file format and extract strips.
-    
-    Args:
-        sjpg_data: SJPG file data (bytes)
-        
-    Returns:
-        tuple: (width, height, block_height, strips)
-    """
-    # Validate magic bytes
-    if sjpg_data[0:4] != b'_SJP':
-        raise ValueError("Invalid SJPG file (missing magic bytes)")
-    
-    # Parse header (little-endian)
-    width = struct.unpack('<H', sjpg_data[14:16])[0]
-    height = struct.unpack('<H', sjpg_data[16:18])[0]
-    num_strips = struct.unpack('<H', sjpg_data[18:20])[0]
-    block_height = struct.unpack('<H', sjpg_data[20:22])[0]
-    
-    # Parse strip table (2 bytes per entry, starting at byte 22)
-    # Historically, the tools in this repo generate a *length table* (u16 per strip).
-    # Some documentation (and other tooling) may refer to an *offset table*.
-    # We support both by using a simple heuristic.
-    table = []
-    pos = 22
-    for _ in range(num_strips):
-        value = struct.unpack('<H', sjpg_data[pos:pos+2])[0]
-        table.append(value)
-        pos += 2
-    
-    header_size = pos
-    data_size = len(sjpg_data) - header_size
-    if data_size < 0:
-        raise ValueError("Invalid SJPG: header larger than file")
-
-    # Heuristic: treat as offsets if it looks like a monotonic offset table starting at 0.
-    looks_like_offsets = (
-        num_strips > 0 and
-        table[0] == 0 and
-        all(table[i] <= table[i + 1] for i in range(num_strips - 1)) and
-        table[-1] <= data_size
-    )
-
-    strips = []
-    if looks_like_offsets:
-        # Offset table: slice between successive offsets
-        for i in range(num_strips):
-            start = header_size + table[i]
-            if i + 1 < num_strips:
-                end = header_size + table[i + 1]
-            else:
-                end = len(sjpg_data)
-            if start > end or start < header_size or end > len(sjpg_data):
-                raise ValueError("Invalid SJPG offset table")
-            strips.append(sjpg_data[start:end])
-    else:
-        # Length table: slice using cumulative sizes
-        offset = 0
-        for length in table:
-            start = header_size + offset
-            end = start + length
-            if start > end or start < header_size or end > len(sjpg_data):
-                raise ValueError("Invalid SJPG length table")
-            strips.append(sjpg_data[start:end])
-            offset += length
-    
-    return width, height, block_height, strips
+    return width, height, strip_height, strips
 
 
 # ============================================================================
 # Upload Functions
 # ============================================================================
 
-def upload_single_file(esp32_ip, sjpg_data, timeout=10):
+def upload_single_file(esp32_ip, jpeg_data, timeout=10):
     """
-    Upload entire SJPG file in one request (original API).
+    Upload a single baseline JPEG via multipart.
     
     Args:
         esp32_ip: ESP32 IP address
-        sjpg_data: SJPG file data (bytes)
+        jpeg_data: JPEG file data (bytes)
         timeout: Display timeout in seconds
         
     Returns:
@@ -226,13 +105,13 @@ def upload_single_file(esp32_ip, sjpg_data, timeout=10):
     """
     url = f"http://{esp32_ip}/api/display/image"
     
-    print(f"\n=== Single-File Upload ===")
+    print(f"\n=== Single-File Upload (JPEG) ===")
     print(f"URL: {url}")
-    print(f"Size: {len(sjpg_data)} bytes")
+    print(f"Size: {len(jpeg_data)} bytes")
     print(f"Timeout: {timeout}s")
     
     try:
-        files = {'image': ('image.sjpg', sjpg_data, 'application/octet-stream')}
+        files = {'image': ('image.jpg', jpeg_data, 'image/jpeg')}
         params = {'timeout': timeout}
         
         response = requests.post(url, files=files, params=params, timeout=30)
@@ -250,13 +129,12 @@ def upload_single_file(esp32_ip, sjpg_data, timeout=10):
         return False
 
 
-def upload_strips(esp32_ip, sjpg_data, timeout=10, start_strip=None, end_strip=None):
+def upload_strips(esp32_ip, width, height, strips, timeout=10, start_strip=None, end_strip=None):
     """
-    Upload SJPG as individual strips (memory-efficient API).
+    Upload the image as individual JPEG fragments (memory-efficient API).
     
     Args:
         esp32_ip: ESP32 IP address
-        sjpg_data: SJPG file data (bytes)
         timeout: Display timeout in seconds
         start_strip: First strip to upload (None = 0)
         end_strip: Last strip to upload (None = all)
@@ -264,16 +142,13 @@ def upload_strips(esp32_ip, sjpg_data, timeout=10, start_strip=None, end_strip=N
     Returns:
         bool: Success
     """
-    # Parse SJPG
-    width, height, block_height, strips = parse_sjpg(sjpg_data)
-    
     # Determine strip range
     first = start_strip if start_strip is not None else 0
     last = end_strip if end_strip is not None else len(strips) - 1
     
-    print(f"\n=== Strip-Based Upload ===")
+    print(f"\n=== Chunk/Strip Upload (JPEG fragments) ===")
     print(f"Image: {width}×{height} pixels")
-    print(f"Strips: {len(strips)} total ({block_height}px each)")
+    print(f"Strips: {len(strips)} total")
     print(f"Range: {first} to {last}")
     print(f"Timeout: {timeout}s")
     
@@ -282,7 +157,7 @@ def upload_strips(esp32_ip, sjpg_data, timeout=10, start_strip=None, end_strip=N
         strip_data = strips[i]
         
         # Build URL with metadata
-        url = f"http://{esp32_ip}/api/display/strip"
+        url = f"http://{esp32_ip}/api/display/image/chunks"
         params = {
             'index': i,
             'total': len(strips),
@@ -325,17 +200,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Strip-based upload with 32px strips (memory efficient)
+    # Chunk/strip upload with 32px strips (memory efficient)
   python3 upload_image.py 192.168.1.111 photo.jpg --mode strip --strip-height 32
   
   # Single-file upload (faster for small images)
   python3 upload_image.py 192.168.1.111 photo.jpg --mode single
-  
-  # Upload pre-converted SJPG
-  python3 upload_image.py 192.168.1.111 photo.sjpg --mode strip
-  
-  # Debug: upload only strip 2
-  python3 upload_image.py 192.168.1.111 photo.sjpg --mode strip --start 2 --end 2
   
   # Custom timeout (0 = permanent, default = 10s)
   python3 upload_image.py 192.168.1.111 photo.jpg --timeout 30
@@ -343,19 +212,19 @@ Examples:
     )
     
     parser.add_argument('esp32_ip', help='ESP32 IP address')
-    parser.add_argument('image', help='Image file (.jpg, .jpeg, or .sjpg)')
+    parser.add_argument('image', help='Image file (any Pillow-supported format; will be encoded as JPEG)')
     parser.add_argument('--mode', choices=['single', 'strip'], required=True,
                        help='Upload mode (required)')
     parser.add_argument('--strip-height', type=int, default=None,
-                       help='Strip height in pixels for SJPG conversion (default: 16 for --mode single, 32 for --mode strip)')
+                       help='Strip height in pixels for chunk upload (default: 32)')
     parser.add_argument('--timeout', type=int, default=10,
                        help='Display timeout in seconds (0=permanent, default: 10)')
     parser.add_argument('--start', type=int, default=None,
                        help='First strip to upload (debug mode)')
     parser.add_argument('--end', type=int, default=None,
                        help='Last strip to upload (debug mode)')
-    parser.add_argument('--no-bgr-swap', action='store_true',
-                       help='Disable BGR color swap (for RGB displays)')
+    parser.add_argument('--jpeg-quality', type=int, default=90,
+                       help='JPEG quality for (re)encoding (default: 90)')
     
     args = parser.parse_args()
     
@@ -364,48 +233,28 @@ Examples:
         print(f"Error: Image file not found: {args.image}")
         sys.exit(1)
     
-    # Determine file type
-    file_ext = Path(args.image).suffix.lower()
-    
-    # Choose default strip height (if converting from JPG)
-    # NOTE: LVGL's SJPG decoder is effectively 16px-strip oriented; using 32 can result
-    # in only the first strip being displayed when using the single-file LVGL path.
+    print(f"Input: {args.image}")
     strip_height = args.strip_height
     if strip_height is None:
-        strip_height = 16 if args.mode == 'single' else 32
-
-    # Convert JPG to SJPG if needed
-    if file_ext in ['.jpg', '.jpeg']:
-        print(f"Input: {args.image} (JPG)")
-        sjpg_data = jpg_to_sjpg(
-            args.image, 
-            strip_height=strip_height,
-            swap_bgr=not args.no_bgr_swap
-        )
-    elif file_ext == '.sjpg':
-        print(f"Input: {args.image} (SJPG)")
-        with open(args.image, 'rb') as f:
-            sjpg_data = f.read()
-        
-        # Parse to show info
-        width, height, block_height, strips = parse_sjpg(sjpg_data)
-        print(f"  Image: {width}×{height} pixels")
-        print(f"  Strips: {len(strips)} ({block_height}px each)")
-    else:
-        print(f"Error: Unsupported file format: {file_ext}")
-        print("Supported: .jpg, .jpeg, .sjpg")
-        sys.exit(1)
+        strip_height = 32
     
     # Upload
     if args.mode == 'single':
-        success = upload_single_file(args.esp32_ip, sjpg_data, args.timeout)
+        width, height, jpeg_data = image_to_jpeg_bytes(args.image, quality=args.jpeg_quality)
+        print(f"  Image: {width}×{height} pixels")
+        success = upload_single_file(args.esp32_ip, jpeg_data, args.timeout)
     else:  # strip
+        width, height, _, strips = image_to_jpeg_strips(args.image, strip_height=strip_height, quality=args.jpeg_quality)
+        print(f"  Image: {width}×{height} pixels")
+        print(f"  Strips: {len(strips)} total ({strip_height}px target)")
         success = upload_strips(
-            args.esp32_ip, 
-            sjpg_data, 
+            args.esp32_ip,
+            width,
+            height,
+            strips,
             args.timeout,
             args.start,
-            args.end
+            args.end,
         )
     
     sys.exit(0 if success else 1)

@@ -2,7 +2,7 @@
  * Strip Decoder for Memory-Efficient Image Display
  * 
  * Decodes individual JPEG strips and writes directly to LCD hardware.
- * Uses TJpgDec from LVGL (same decoder used by SJPG format).
+ * Uses TJpgDec/tjpgd for baseline JPEG decode.
  * 
  * Memory usage: ~20KB constant regardless of image size
  *   - Strip buffer: ~2KB (temporary per strip)
@@ -29,8 +29,10 @@ public:
     // jpeg_data: pointer to JPEG data for this strip
     // jpeg_size: size of JPEG data in bytes
     // strip_index: index of this strip (0-based)
+    // output_bgr565: true to pack pixels as BGR565 (legacy strip behavior),
+    //               false to pack pixels as RGB565 (useful when LCD is in RGB mode)
     // Returns: true on success, false on failure
-    bool decode_strip(const uint8_t* jpeg_data, size_t jpeg_size, int strip_index);
+    bool decode_strip(const uint8_t* jpeg_data, size_t jpeg_size, int strip_index, bool output_bgr565 = true);
     
     // Complete image session and cleanup
     void end();
@@ -45,7 +47,7 @@ private:
     
     // Note: Strip height is auto-detected from JPEG during decode (not hardcoded)
     // Typical values: 8, 16, 32, or 64 pixels (configurable in encoder)
-    static const int STRIP_HEIGHT = 16;  // Default SJPG strip height (for reference only)
+    static const int STRIP_HEIGHT = 16;  // Default strip height
 };
 
 #endif // STRIP_DECODER_H

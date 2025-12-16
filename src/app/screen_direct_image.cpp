@@ -107,14 +107,14 @@ void DirectImageScreen::begin_strip_session(int width, int height) {
     Logger.logEnd();
 }
 
-bool DirectImageScreen::decode_strip(const uint8_t* jpeg_data, size_t jpeg_size, int strip_index) {
+bool DirectImageScreen::decode_strip(const uint8_t* jpeg_data, size_t jpeg_size, int strip_index, bool output_bgr565) {
     if (!session_active) {
         Logger.logMessage("DirectImageScreen", "ERROR: No active strip session");
         return false;
     }
     
     // Decode strip and write directly to LCD
-    bool success = decoder.decode_strip(jpeg_data, jpeg_size, strip_index);
+    bool success = decoder.decode_strip(jpeg_data, jpeg_size, strip_index, output_bgr565);
     
     if (!success) {
         Logger.logMessagef("DirectImageScreen", "ERROR: Strip %d decode failed", strip_index);

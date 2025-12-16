@@ -105,16 +105,10 @@ response = requests.delete('http://192.168.1.100/api/display/image')
 print(response.json())
 ```
 
-### Using Test Scripts
+### Using the Upload Tool
 
-**Bash:**
 ```bash
-./tools/test-image-api.sh 192.168.1.100 photo.jpg
-```
-
-**Python:**
-```bash
-python3 tools/test_image_api.py 192.168.1.100 photo.jpg
+python3 tools/upload_image.py 192.168.1.100 photo.jpg --mode single
 ```
 
 ## Image Requirements
@@ -127,14 +121,13 @@ python3 tools/test_image_api.py 192.168.1.100 photo.jpg
 - **Color**: RGB color (24-bit)
 - **Quality**: 70-80% JPEG quality provides good balance
 
-**Note:** The display is physically 240×280 pixels but runs in landscape mode (rotated 90°). Images are automatically rotated by the firmware - upload in **240×280 portrait** dimensions and they will display as **280×240 landscape**.
+**Note:** Images are drawn in **raw panel coordinates**. Upload in **240×280** (the physical panel size).
 
 ### Creating Compatible Images
 
 **Using ImageMagick:**
 ```bash
-# Resize to 240×280 (physical dimensions)
-# Firmware automatically rotates to 280×240 landscape
+# Resize to 240×280 (physical panel dimensions)
 convert input.jpg -resize 240x280 -quality 75 output.jpg
 ```
 
@@ -155,7 +148,7 @@ img.save('output.jpg', 'JPEG', quality=75, optimize=True)
 1. **Upload**: Client sends JPEG via POST request with optional timeout parameter
 2. **Validation**: Device checks file size, magic bytes (JPEG header)
 3. **Memory Check**: Ensures sufficient heap available (~50KB headroom)
-4. **Decode & Display**: SJPG decoder renders image to screen (timer starts before decoding)
+4. **Decode & Display**: JPEG decoder renders image directly to the LCD (timer starts before decoding)
 5. **Timeout**: After configured duration (default: 10 seconds), automatically returns to power screen
 6. **Cleanup**: Image buffer freed from RAM
 
@@ -163,9 +156,7 @@ img.save('output.jpg', 'JPEG', quality=75, optimize=True)
 
 ### Image Scaling
 
-- **Exact match (240×280)**: Displayed pixel-perfect
-- **Smaller images**: Centered with black bars
-- **Larger images**: May be clipped at edges (implementation-dependent)
+- **Currently requires exact 240×280** for `/api/display/image`
 
 ### Memory Usage
 
@@ -173,7 +164,7 @@ img.save('output.jpg', 'JPEG', quality=75, optimize=True)
 |-----------|----------------|
 | JPEG file (compressed) | 3,000 - 50,000 |
 | Upload buffer | Same as file size |
-| SJPG decoder working | ~4,000 |
+| JPEG decoder working | ~4,000 |
 | **Peak usage** | **~10-60 KB** |
 
 ## Troubleshooting
@@ -207,17 +198,18 @@ convert input.jpg -resize 240x280 -quality 75 output.jpg
 2. Re-save image with image editor
 3. Check JPEG header: `hexdump -C image.jpg | head -1` should show `FF D8 FF`
 
-### Image Displays Corrupted
+### Upload Fails with "Unsupported JPEG"
 
-**Problem**: SJPG decoder incompatibility  
+**Problem**: The device supports a subset of baseline JPEG encodings. Some JPEGs (especially progressive, or uncommon chroma sampling) will be rejected.
+
 **Solution**:
-1. Re-save JPEG as "baseline" (not progressive)
-2. Use JPEG quality 70-90% (avoid extreme compression)
-3. Ensure RGB color space (not CMYK or grayscale)
+1. Re-save as **baseline JPEG** (not progressive)
+2. Prefer standard chroma subsampling (e.g. 4:2:0)
+3. Ensure RGB (avoid CMYK)
 
 ```bash
 # Force baseline JPEG
-convert input.jpg -interlace none -quality 75 output.jpg
+convert input.jpg -interlace none -sampling-factor 4:2:0 -quality 75 output.jpg
 ```
 
 ### Display Timeout
@@ -283,10 +275,8 @@ If exposing to internet, add:
 
 ### LVGL Integration
 
-- Uses LVGL's SJPG decoder (`LV_USE_SJPG`)
-- Images rendered to `lv_img_t` objects
-- Screen managed by `ImageScreen` class
-- Automatic color space conversion (RGB ↔ BGR for ST7789V2)
+- The UI uses LVGL, but uploaded images are rendered **direct-to-LCD** using TJpgDec
+- Screen managed by `DirectImageScreen`
 
 ### Memory Management
 
@@ -298,10 +288,9 @@ If exposing to internet, add:
 ### Timeout Implementation
 
 - Timer starts when upload completes (before image decode), captured in `web_portal.cpp`
-- Start time passed through to `ImageScreen` via `set_start_time()`
-- `ImageScreen::show()` uses pre-set start time if available, otherwise captures current time
+- Start time passed through to `DirectImageScreen` via `set_start_time()`
 - Checked every frame in `display_update()`
-- Automatically calls `display_hide_image()` after configured timeout
+- Automatically returns to the previous screen after configured timeout
 - Returns to previous screen (typically power screen)
 - **Accurate timing**: Full display duration available regardless of decode time (1-3 seconds)
 - **Permanent display**: Setting `timeout=0` disables auto-dismiss (image stays until manually dismissed)
