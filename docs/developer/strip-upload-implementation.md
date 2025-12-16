@@ -90,10 +90,10 @@ Each strip is a valid JPEG image of size: [width] × [strip_height]
 │  2. Split into strips and encode each strip as baseline JPEG  │
 │      ↓                                                       │
 │  3. Upload each strip via HTTP                               │
-│     POST /api/display/image/chunks?index=0&total=N&width=W&height=H │
-│     POST /api/display/image/chunks?index=1&total=N&width=W&height=H │
+│     POST /api/display/image/strips?strip_index=0&strip_count=N&width=W&height=H │
+│     POST /api/display/image/strips?strip_index=1&strip_count=N&width=W&height=H │
 │     ...                                                      │
-│     POST /api/display/image/chunks?index=N-1&total=N&width=W&height=H│
+│     POST /api/display/image/strips?strip_index=N-1&strip_count=N&width=W&height=H│
 └──────────────────────────────────────────────────────────────┘
                           ↓ WiFi (each strip independently)
 ┌──────────────────────────────────────────────────────────────┐
@@ -167,7 +167,7 @@ Each request body is a standalone baseline JPEG fragment.
 
 Instead, the client splits the source image into horizontal strips and encodes **each strip** as an independent **baseline JPEG fragment**. Each fragment is uploaded to the device via:
 
-`POST /api/display/image/chunks?index=N&total=T&width=W&height=H&timeout=seconds`
+`POST /api/display/image/strips?strip_index=N&strip_count=T&width=W&height=H&timeout=seconds`
 
 This keeps the device memory usage constant and avoids buffering an entire image file.
 
@@ -357,22 +357,22 @@ static int jpeg_output_func(JDEC* jd, void* bitmap, JRECT* rect) {
 ### Strip Upload Endpoint
 
 ```
-POST /api/display/image/chunks
+POST /api/display/image/strips
 Query Parameters:
-  - index:   Strip index (0-based)
-  - total:   Total number of strips in image
-  - width:   Image width in pixels
-  - height:  Image height in pixels
-  - timeout: Display timeout in seconds (optional, default: 10)
+    - strip_index: Strip index (0-based)
+    - strip_count: Total number of strips in image
+    - width: Image width in pixels
+    - height: Image height in pixels
+    - timeout: Display timeout in seconds (optional, default: 10)
 
 Body: Raw JPEG data (binary)
 
 Response: 200 OK
 {
   "success": true,
-  "strip": 0,
-  "total": 9,
-  "message": "Strip 0/9 decoded"
+    "strip_index": 0,
+    "strip_count": 9,
+    "complete": false
 }
 
 Response: 500 Error
@@ -386,14 +386,14 @@ Response: 500 Error
 
 ```bash
 curl -X POST \
-    "http://192.168.1.111/api/display/image/chunks?index=0&total=9&width=240&height=280&timeout=10" \
+    "http://192.168.1.111/api/display/image/strips?strip_index=0&strip_count=9&width=240&height=280&timeout=10" \
   --data-binary "@strip_0.jpg" \
   -H "Content-Type: application/octet-stream"
 ```
 
 ### State Management
 
-**First strip (index=0):**
+**First strip (strip_index=0):**
 - Initializes `StripDecoder::begin(width, height)`
 - Resets `current_y = 0`
 - Prepares for new image session
@@ -403,7 +403,7 @@ curl -X POST \
 - Writes to LCD at `current_y` position
 - Advances `current_y += decoded_height`
 
-**Last strip (index=total-1):**
+**Last strip (strip_index=strip_count-1):**
 - Completes decode
 - Calls `StripDecoder::end()`
 - Logs "All strips decoded"
@@ -418,7 +418,7 @@ curl -X POST \
 ESP32_IP="192.168.1.111"
 IMAGE="test240x280.jpg"
 
-# Upload as sequential JPEG fragments (strip/chunk mode)
+# Upload as sequential JPEG strips (strip mode)
 python3 tools/upload_image.py "$ESP32_IP" "$IMAGE" --mode strip --strip-height 32 --timeout 10
 ```
 **Usage:**
@@ -510,8 +510,8 @@ def upload_jpeg_strips(esp32, image_file, strip_height=32, timeout=10):
         strip.save(buf, format='JPEG', quality=90, subsampling=2, progressive=False)
 
         requests.post(
-            f"{esp32}/api/display/image/chunks",
-            params={"index": idx, "total": total, "width": img.width, "height": img.height, "timeout": timeout},
+            f"{esp32}/api/display/image/strips",
+            params={"strip_index": idx, "strip_count": total, "width": img.width, "height": img.height, "timeout": timeout},
             headers={"Content-Type": "application/octet-stream"},
             data=buf.getvalue(),
         )
@@ -520,7 +520,7 @@ def upload_jpeg_strips(esp32, image_file, strip_height=32, timeout=10):
 ### Key Requirements for Adaptation
 
 1. **Format must be splittable** (scanlines, tiles, strips)
-2. **Each chunk processable independently** (no dependencies on previous chunks)
+2. **Each strip processable independently** (no dependencies on previous strips)
 3. **Client-side splitting/re-encoding acceptable** (generate baseline JPEG fragments on PC/server)
 4. **Sequential write pattern** (top-to-bottom for displays)
 
@@ -557,7 +557,7 @@ Single-file timeline:
 └─────────────────────┴────────┘
 ```
 
-**Result:** Chunked uploads are typically slower for small images (more HTTP overhead), but keep memory usage predictable and can start drawing earlier.
+**Result:** Strip uploads are typically slower for small images (more HTTP overhead), but keep memory usage predictable and can start drawing earlier.
 
 ### Network Considerations
 
@@ -759,7 +759,7 @@ bool StripDecoder::decode_strip(const uint8_t* jpeg_data, size_t jpeg_size, int 
 ### Project Files
 
 **Client tooling:**
-- [tools/upload_image.py](../../tools/upload_image.py) - Reference uploader for `/api/display/image` and `/api/display/image/chunks`
+- [tools/upload_image.py](../../tools/upload_image.py) - Reference uploader for `/api/display/image` and `/api/display/image/strips`
 
 **Client tooling:**
 
@@ -812,7 +812,7 @@ Use the reference uploader for both endpoints:
 
 ### Display Rotation
 
-Both `/api/display/image` and `/api/display/image/chunks` render **direct-to-LCD** in **raw panel coordinates**.
+Both `/api/display/image` and `/api/display/image/strips` render **direct-to-LCD** in **raw panel coordinates**.
 
 That means **no LVGL rotation is applied** for either endpoint. Clients should upload images already rotated for the panel orientation.
 

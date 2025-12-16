@@ -25,7 +25,7 @@ This directory contains build-time and runtime tools for the ESP32 Energy Monito
 ## Runtime Tools (manual usage)
 
 ### upload_image.py ⭐ **Main Image Upload Tool**
-**Purpose:** Upload images to ESP32 device (baseline JPEG) using either single upload or chunked fragments  
+**Purpose:** Upload images to ESP32 device (baseline JPEG) using either single upload or strip upload (multiple requests)  
 **Features:**
 - Configurable strip height (8, 16, 32, 64 pixels)
 - Debug mode (upload specific strips)

@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Image Display API**: Display temporary or permanent images on the LCD via HTTP upload
   - `POST /api/display/image?timeout=<seconds>` - Upload a baseline JPEG (max 100KB)
-  - `POST /api/display/image/chunks?index=<i>&total=<n>&width=<w>&height=<h>&timeout=<seconds>` - Upload baseline JPEG fragments (memory-efficient)
+  - `POST /api/display/image/strips?strip_index=<i>&strip_count=<n>&width=<w>&height=<h>&timeout=<seconds>` - Upload baseline JPEG strips (memory-efficient)
   - `DELETE /api/display/image` - Manually dismiss current image
   - JPEG-only: rejects unsupported encodings (e.g., progressive) with descriptive errors
   - Configurable timeout: 0 (permanent display), 1-86400 seconds (default: 10s, max: 24 hours)

@@ -256,7 +256,7 @@ The `camera_to_esp32` event accepts the following parameters:
 | `timeout` | No | Display timeout in seconds (0-86400) | `30` |
 | `mode` | No | Upload mode (`single` or `strip`) | `strip` |
 | `rotate_degrees` | No | Rotation control: omitted/`null` = auto-rotate landscape→portrait (for portrait panel); `0` = no rotation; `90/180/270` = explicit | omitted |
-| `strip_height` | No | Strip height in pixels for chunked upload | `32` |
+| `strip_height` | No | Strip height in pixels for strip-based upload | `32` |
 | `jpeg_quality` | No | JPEG quality for re-encoding | `80` |
 | `dismiss` | No | If true, dismiss current image and return to UI | `true` |
 

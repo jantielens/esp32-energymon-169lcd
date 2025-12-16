@@ -462,16 +462,16 @@ cd tools
 python3 upload_image.py 192.168.1.100 photo.jpg --mode single
 ```
 
-### `POST /api/display/image/chunks`
+### `POST /api/display/image/strips`
 
-Upload and display an image as a sequence of **independent JPEG fragments** (strips).
+Upload and display an image as a sequence of **independent JPEG strips**.
 
 **Request:**
 - **Content-Type**: `application/octet-stream`
-- **Body**: a single JPEG fragment (one strip)
+- **Body**: a single JPEG strip (baseline JPEG)
 - **Query parameters**:
-  - `index` (required): 0-based strip index (must be uploaded in order)
-  - `total` (required): total number of strips
+  - `strip_index` (required): 0-based strip index (must be uploaded in order)
+  - `strip_count` (required): total number of strips
   - `width` (required): full image width
   - `height` (required): full image height
   - `timeout` (optional): display timeout in seconds
@@ -485,7 +485,7 @@ Upload and display an image as a sequence of **independent JPEG fragments** (str
 curl -X POST \
   --data-binary @strip0.jpg \
   -H 'Content-Type: application/octet-stream' \
-  'http://energy-monitor.local/api/display/image/chunks?index=0&total=9&width=240&height=280&timeout=10'
+  'http://energy-monitor.local/api/display/image/strips?strip_index=0&strip_count=9&width=240&height=280&timeout=10'
 ```
 
 ### `DELETE /api/display/image`

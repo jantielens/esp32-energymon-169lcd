@@ -6,7 +6,7 @@ This document details the implementation of dynamic image display on an ESP32-C3
 
 **Note:** The current HTTP APIs render uploaded images **direct-to-LCD** using TJpgDec:
 - `POST /api/display/image` (single baseline JPEG)
-- `POST /api/display/image/chunks` (sequential JPEG fragments)
+- `POST /api/display/image/strips` (sequential JPEG strips)
 
 **Target audience:** Developers implementing image display on resource-constrained embedded systems with LVGL.
 
@@ -82,7 +82,7 @@ Cons:
 
 Why this is feasible now:
 - The firmware decodes JPEG **direct-to-LCD** using TJpgDec and a small working buffer (no full RGB framebuffer).
-- For constant memory usage independent of image file size, use `/api/display/image/chunks`.
+- For constant memory usage independent of image file size, use `/api/display/image/strips`.
 
 ---
 
@@ -116,12 +116,12 @@ Cons:
 
 ---
 
-### Option 3: Chunked Baseline JPEG Fragments ✅ SELECTED
+### Option 3: Strip Upload (Baseline JPEG Strips) ✅ SELECTED
 
 **How it works:**
 1. Original image split into horizontal strips (typically 16 pixels high)
 2. Each strip encoded as independent JPEG fragment
-3. Client uploads each fragment sequentially to `/api/display/image/chunks`
+3. Client uploads each strip sequentially to `/api/display/image/strips`
 4. Device decodes each fragment and renders it sequentially to the LCD
 
 Metadata is provided via query parameters; each request body is a single baseline JPEG fragment.
@@ -306,7 +306,7 @@ void handleImageUpload(...) {
         upload_state = UPLOAD_IN_PROGRESS;
     }
     
-    // Receive chunks...
+    // Receive request body fragments...
     
     if (final) {
         // Queue for display (no LVGL calls here!)
@@ -452,7 +452,7 @@ Logger.logMessagef("Perf", "Operation took %lums", millis() - start);
 │  tools/upload_image.py                                  │
 │      ├─ Re-encode as baseline JPEG (4:2:0)              │
 │      ├─ POST /api/display/image          (single)        │
-│      └─ POST /api/display/image/chunks   (fragments)     │
+│      └─ POST /api/display/image/strips   (strips)        │
 └─────────────────────────────────────────────────────────┘
                        ↓ WiFi
 ┌─────────────────────────────────────────────────────────┐
@@ -481,10 +481,10 @@ Logger.logMessagef("Perf", "Operation took %lums", millis() - start);
 - Enforces panel dimensions (`LCD_WIDTH`×`LCD_HEIGHT`) for now.
 - The main loop performs the decode and writes pixels direct-to-LCD.
 
-### Chunk Upload (`POST /api/display/image/chunks`)
+### Strip Upload (`POST /api/display/image/strips`)
 
 - Accepts a sequence of baseline JPEG fragments.
-- Metadata is carried in query parameters (`index`, `total`, `width`, `height`, `timeout`).
+- Metadata is carried in query parameters (`strip_index`, `strip_count`, `width`, `height`, `timeout`).
 - Each fragment is decoded and rendered to the correct vertical region in raw panel coordinates.
 
 ### Rotation
@@ -607,7 +607,7 @@ fetch('http://192.168.1.120/api/display/image', {
 ```
 
 **For image upload:**
-- Both `/api/display/image` and `/api/display/image/chunks` render in **raw panel coordinates**.
+- Both `/api/display/image` and `/api/display/image/strips` render in **raw panel coordinates**.
 - UI rotation settings do not rotate uploaded images.
 - Prepare the image at the raw panel size (typically **240×280**) and rotate on the client if you want a different orientation.
 
@@ -618,11 +618,11 @@ fetch('http://192.168.1.120/api/display/image', {
 **Insight:** On ESP32-C3 with ~80KB free RAM, choose formats that minimize decode overhead.
 
 **Recommendation:**
-- ✅ Use chunked baseline JPEG fragments for predictable memory usage
+- ✅ Use strip-based baseline JPEG uploads for predictable memory usage
 - ❌ Avoid full-image decode formats for high-res images
 - ✅ Profile actual RAM usage with realistic images
 
-**Rule of thumb:** Chunked uploads keep peak memory bounded by a small working buffer plus a small line/strip buffer.
+**Rule of thumb:** Strip uploads keep peak memory bounded by a small working buffer plus a small line/strip buffer.
 
 ---
 
@@ -757,8 +757,8 @@ void loop() {
 
 - `src/app/screen_direct_image.h/cpp` - Direct-to-LCD image session
 - `src/app/strip_decoder.h/cpp` - TJpgDec integration (direct-to-LCD)
-- `src/app/web_portal.cpp` - Image upload API (`/api/display/image`, `/api/display/image/chunks`)
-- `tools/upload_image.py` - Reference uploader for single + chunks
+- `src/app/web_portal.cpp` - Image upload API (`/api/display/image`, `/api/display/image/strips`)
+- `tools/upload_image.py` - Reference uploader for single + strips
 
 ### Similar Projects
 
@@ -772,7 +772,7 @@ void loop() {
 
 Implementing image display on resource-constrained devices requires careful consideration of:
 
-1. **Format selection** - Baseline JPEG is supported; chunked fragments provide a scalable path under tight RAM
+1. **Format selection** - Baseline JPEG is supported; strip uploads provide a scalable path under tight RAM
 2. **Color space handling** - Upload normal RGB JPEGs; firmware handles RGB/BGR packing internally
 3. **Memory architecture** - Direct-to-LCD decoding avoids large full-frame buffers
 4. **User workflow** - Use `tools/upload_image.py` for consistent encoding and endpoint usage

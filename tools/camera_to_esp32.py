@@ -12,7 +12,7 @@ How it works (high-level):
     4) Encode as baseline JPEG (TJpgDec-friendly)
     5) Upload via either:
          - single: POST /api/display/image (multipart)
-         - strip:  POST /api/display/image/chunks (multiple requests)
+         - strip:  POST /api/display/image/strips (multiple requests)
 
 Installation:
   1. Copy this file to: /addon_configs/a0d7b954_appdaemon/apps/
@@ -65,10 +65,10 @@ class CameraToESP32(hass.Hass):
         # JPEG quality for re-encoding (baseline JPEG, TJpgDec-friendly)
         self.jpeg_quality = int(self.args.get("jpeg_quality", 80))
 
-        # Default upload mode: 'single' (multipart) or 'strip' (chunked fragments)
+        # Default upload mode: 'single' (multipart) or 'strip' (multiple requests)
         self.default_mode = str(self.args.get("mode", "single")).strip().lower()
 
-        # Default strip height for chunked uploads
+        # Default strip height for strip uploads
         self.default_strip_height = int(self.args.get("strip_height", 32))
 
         # Rotation control (unified):
@@ -327,7 +327,7 @@ class CameraToESP32(hass.Hass):
         return output.getvalue()
 
     def image_to_jpeg_strips(self, img, strip_height=32, quality=80):
-        """Split a prepared PIL image into baseline-JPEG fragments for /api/display/image/chunks."""
+        """Split a prepared PIL image into baseline-JPEG fragments for /api/display/image/strips."""
         width, height = img.size
         strips = []
         for y in range(0, height, strip_height):
@@ -353,17 +353,17 @@ class CameraToESP32(hass.Hass):
             return False
 
     def upload_strips(self, strips, esp32_ip, timeout=10):
-        """Upload JPEG fragments via POST /api/display/image/chunks."""
+        """Upload JPEG fragments via POST /api/display/image/strips."""
         try:
             total = len(strips)
             width = self.display_width
             height = self.display_height
 
             for idx, strip_data in enumerate(strips):
-                url = f"http://{esp32_ip}/api/display/image/chunks"
+                url = f"http://{esp32_ip}/api/display/image/strips"
                 params = {
-                    'index': idx,
-                    'total': total,
+                    'strip_index': idx,
+                    'strip_count': total,
                     'width': width,
                     'height': height,
                     'timeout': timeout,

@@ -1194,32 +1194,32 @@ void handleImageDelete(AsyncWebServerRequest *request) {
     request->send(200, "application/json", "{\"success\":true,\"message\":\"Image dismiss queued\"}");
 }
 
-// POST /api/display/image/chunks?index=N&total=T&width=W&height=H[&timeout=MS] - Upload a single JPEG chunk/fragment (stateless/atomic)
+// POST /api/display/image/strips?strip_index=N&strip_count=T&width=W&height=H[&timeout=seconds] - Upload a single JPEG strip (stateless/atomic)
 void handleStripUpload(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
     // Extract required metadata from query parameters.
     // Be explicit about reading URL (query) params on POST requests.
     if (index == 0) {
         const bool has_required =
-            request->hasParam("index", false) &&
-            request->hasParam("total", false) &&
+            request->hasParam("strip_index", false) &&
+            request->hasParam("strip_count", false) &&
             request->hasParam("width", false) &&
             request->hasParam("height", false);
 
         if (!has_required) {
-            request->send(400, "application/json", "{\"success\":false,\"message\":\"Missing required parameters: index, total, width, height\"}");
+            request->send(400, "application/json", "{\"success\":false,\"message\":\"Missing required parameters: strip_index, strip_count, width, height\"}");
             return;
         }
     }
 
-    if (!request->hasParam("index", false) || !request->hasParam("total", false) ||
+    if (!request->hasParam("strip_index", false) || !request->hasParam("strip_count", false) ||
         !request->hasParam("width", false) || !request->hasParam("height", false)) {
         // If parameters are missing mid-request, fail closed.
-        request->send(400, "application/json", "{\"success\":false,\"message\":\"Missing required parameters: index, total, width, height\"}");
+        request->send(400, "application/json", "{\"success\":false,\"message\":\"Missing required parameters: strip_index, strip_count, width, height\"}");
         return;
     }
 
-    int stripIndex = request->getParam("index", false)->value().toInt();
-    int totalStrips = request->getParam("total", false)->value().toInt();
+    int stripIndex = request->getParam("strip_index", false)->value().toInt();
+    int totalStrips = request->getParam("strip_count", false)->value().toInt();
     int imageWidth = request->getParam("width", false)->value().toInt();
     int imageHeight = request->getParam("height", false)->value().toInt();
     unsigned long timeoutMs = request->hasParam("timeout", false) ?
@@ -1362,7 +1362,7 @@ void handleStripUpload(AsyncWebServerRequest *request, uint8_t *data, size_t len
         
         char response[128];
         snprintf(response, sizeof(response), 
-                 "{\"success\":true,\"strip\":%d,\"total\":%d,\"complete\":%s}", 
+                 "{\"success\":true,\"strip_index\":%d,\"strip_count\":%d,\"complete\":%s}", 
                  stripIndex, totalStrips, is_last ? "true" : "false");
         request->send(200, "application/json", response);
     }
@@ -1439,12 +1439,12 @@ void web_portal_init(DeviceConfig *config) {
     // Register the more specific /chunks endpoint before /image.
     // Some handler matching modes are prefix-based; ordering avoids accidental capture.
 
-    // Chunked image display endpoint (stateless/atomic)
-    // URL format: /api/display/image/chunks?index=N&total=T&width=W&height=H[&timeout=MS]
+    // Strip image display endpoint (stateless/atomic)
+    // URL format: /api/display/image/strips?strip_index=N&strip_count=T&width=W&height=H[&timeout=seconds]
     // Each request is self-contained with all metadata
     // Uses body handler since we're sending raw binary data
     server->on(
-        "/api/display/image/chunks",
+        "/api/display/image/strips",
         HTTP_POST,
         [](AsyncWebServerRequest *request) {},
         NULL,  // No file upload handler

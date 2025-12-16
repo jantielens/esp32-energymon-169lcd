@@ -5,7 +5,7 @@ Uploads a plain baseline JPEG to the device.
 
 Endpoints:
   - POST /api/display/image          (single upload via multipart)
-  - POST /api/display/image/chunks   (strip/chunk uploads via raw body)
+    - POST /api/display/image/strips   (strip uploads via raw body)
 
 Notes:
   - Firmware expects normal RGB JPEG input; no client-side BGR swapping.
@@ -13,7 +13,7 @@ Notes:
     as baseline JPEG with 4:2:0 chroma subsampling by default.
 
 Usage:
-    # Chunk/strip upload (memory efficient)
+    # Strip upload (memory efficient)
     python3 upload_image.py 192.168.1.111 photo.jpg --mode strip --strip-height 32
 
     # Single-file upload
@@ -146,7 +146,7 @@ def upload_strips(esp32_ip, width, height, strips, timeout=10, start_strip=None,
     first = start_strip if start_strip is not None else 0
     last = end_strip if end_strip is not None else len(strips) - 1
     
-    print(f"\n=== Chunk/Strip Upload (JPEG fragments) ===")
+    print(f"\n=== Strip Upload (JPEG fragments) ===")
     print(f"Image: {width}×{height} pixels")
     print(f"Strips: {len(strips)} total")
     print(f"Range: {first} to {last}")
@@ -157,10 +157,10 @@ def upload_strips(esp32_ip, width, height, strips, timeout=10, start_strip=None,
         strip_data = strips[i]
         
         # Build URL with metadata
-        url = f"http://{esp32_ip}/api/display/image/chunks"
+        url = f"http://{esp32_ip}/api/display/image/strips"
         params = {
-            'index': i,
-            'total': len(strips),
+            'strip_index': i,
+            'strip_count': len(strips),
             'width': width,
             'height': height,
             'timeout': timeout
@@ -200,7 +200,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    # Chunk/strip upload with 32px strips (memory efficient)
+    # Strip upload with 32px strips (memory efficient)
   python3 upload_image.py 192.168.1.111 photo.jpg --mode strip --strip-height 32
   
   # Single-file upload (faster for small images)
@@ -216,7 +216,7 @@ Examples:
     parser.add_argument('--mode', choices=['single', 'strip'], required=True,
                        help='Upload mode (required)')
     parser.add_argument('--strip-height', type=int, default=None,
-                       help='Strip height in pixels for chunk upload (default: 32)')
+                       help='Strip height in pixels for strip upload (default: 32)')
     parser.add_argument('--timeout', type=int, default=10,
                        help='Display timeout in seconds (0=permanent, default: 10)')
     parser.add_argument('--start', type=int, default=None,
