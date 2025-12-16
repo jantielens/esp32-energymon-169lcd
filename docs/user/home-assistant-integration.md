@@ -8,7 +8,7 @@ This guide shows how to send camera images from Home Assistant to your ESP32 dev
 
 **Architecture:**
 ```
-[HA Camera] → [AppDaemon Script] → Resize + baseline JPEG → [ESP32 Display]
+[HA Camera] → [AppDaemon Script] → Rotate (auto/no/explicit) + letterbox resize + baseline JPEG → [ESP32 Display]
 ```
 
 **Features:**
@@ -135,6 +135,11 @@ actions:
     event_data:
       camera_entity: camera.front_door
       esp32_ip: "192.168.1.111"
+      # mode: single|strip
+      # rotate_degrees: null|0|90|180|270
+      # strip_height: 16|32|...
+      # jpeg_quality: 60-95
+      # dismiss: true
 ```
 
 **To run:** Go to Settings → Automations & Scenes → Find this automation → Click the ▶ (Run) button
@@ -249,6 +254,12 @@ The `camera_to_esp32` event accepts the following parameters:
 | `camera_entity` | Yes | Camera entity ID | `camera.front_door` |
 | `esp32_ip` | Yes* | ESP32 IP address | `192.168.1.111` |
 | `timeout` | No | Display timeout in seconds (0-86400) | `30` |
+| `mode` | No | Upload mode (`single` or `strip`) | `strip` |
+| `rotate_degrees` | No | Rotation control: omitted/`null` = auto-rotate landscape→portrait (for portrait panel); `0` = no rotation; `90/180/270` = explicit | omitted |
+| `strip_height` | No | Strip height in pixels for chunked upload | `32` |
+| `jpeg_quality` | No | JPEG quality for re-encoding | `80` |
+| `dismiss` | No | If true, dismiss current image and return to UI | `true` |
+
 
 \* Not required if `default_esp32_ip` is set in `apps.yaml`
 
