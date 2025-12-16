@@ -204,7 +204,11 @@ esp32-energymon-169lcd/
 │   │   ├── display_manager.cpp/h  # LVGL display driver
 │   │   ├── mqtt_manager.cpp/h     # MQTT client
 │   │   ├── config_manager.cpp/h   # NVS configuration
-│   │   ├── web_portal.cpp/h       # Web server + REST API
+│   │   ├── web_portal.cpp/h       # Web portal composition root (server + captive portal)
+│   │   ├── web_portal_pages.cpp/h # Web UI routes (HTML/CSS/JS)
+│   │   ├── web_portal_api_*.cpp/h # REST API modules (config/system/brightness/OTA)
+│   │   ├── image_api.cpp/h        # Image Display API routes (copyable module)
+│   │   ├── jpeg_preflight.cpp/h   # JPEG header preflight for TJpgDec/tjpgd
 │   │   └── web/               # HTML/CSS/JS assets
 │   ├── boards/
 │   │   ├── esp32/             # ESP32 DevKit V1 pin config

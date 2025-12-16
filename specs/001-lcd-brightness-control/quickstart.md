@@ -72,27 +72,22 @@ Serial.printf("  LCD Brightness: %d%%\n", config->lcd_brightness);
 **Files to modify**:
 - `src/app/web_portal.h`
 - `src/app/web_portal.cpp`
+- `src/app/web_portal_api_brightness.h`
+- `src/app/web_portal_api_brightness.cpp`
 
 **Changes**:
 
-1. **Add forward declarations** (web_portal.h, near other handle* declarations):
-```cpp
-void handleGetBrightness(AsyncWebServerRequest *request);
-void handlePostBrightness(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total);
-```
+1. **Use shared portal state**
 
-2. **Add global variable** (web_portal.cpp, near other static variables):
-```cpp
-// Current runtime brightness (may differ from saved value)
-static uint8_t current_brightness = 100;
-```
+- Runtime brightness lives in `src/app/web_portal_state.h` as `g_web_portal_state.current_brightness`.
+- The portal initializes it from config in `web_portal_init()`.
 
-3. **Implement GET handler** (web_portal.cpp, before `web_portal_init()` function):
+2. **Implement GET handler** (`src/app/web_portal_api_brightness.cpp`):
 ```cpp
 // GET /api/brightness - Return current brightness
 void handleGetBrightness(AsyncWebServerRequest *request) {
     JsonDocument doc;
-    doc["brightness"] = current_brightness;
+    doc["brightness"] = g_web_portal_state.current_brightness;
     
     String response;
     serializeJson(doc, response);
@@ -101,7 +96,7 @@ void handleGetBrightness(AsyncWebServerRequest *request) {
 }
 ```
 
-4. **Implement POST handler** (web_portal.cpp, after GET handler):
+3. **Implement POST handler** (`src/app/web_portal_api_brightness.cpp`):
 ```cpp
 // POST /api/brightness - Update brightness in real-time (not persisted)
 void handlePostBrightness(AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {

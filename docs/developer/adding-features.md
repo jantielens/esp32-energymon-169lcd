@@ -46,7 +46,10 @@ Complete guide to extending the ESP32 Energy Monitor with new functionality. Lea
 |------|---------|----------------|
 | **app.ino** | Main program flow, WiFi, system initialization | Adding new managers, changing boot sequence |
 | **config_manager.cpp/h** | NVS storage for settings | Adding new configuration fields |
-| **web_portal.cpp/h** | HTTP server, REST API endpoints | Adding new web pages or API endpoints |
+| **web_portal.cpp/h** | Web portal composition root (server + captive portal) | Wiring modules, portal lifecycle |
+| **web_portal_pages.cpp/h** | Web UI routes (HTML/CSS/JS) | Adding/changing pages or assets |
+| **web_portal_api_*.cpp/h** | REST API modules (config/system/brightness/OTA) | Adding/changing API endpoints |
+| **image_api.cpp/h** | Image Display API routes (copyable module) | Image upload/display behavior |
 | **mqtt_manager.cpp/h** | Subscribe to MQTT topics, handle messages | Adding new MQTT subscriptions |
 | **display_manager.cpp/h** | Screen lifecycle, transitions | Adding new LVGL screens |
 | **lcd_driver.cpp/h** | Low-level SPI display driver | Display hardware changes |
@@ -154,7 +157,7 @@ bool config_manager_load(DeviceConfig *config) {
 
 #### 3. Add to REST API (GET)
 
-**File:** `src/app/web_portal.cpp` in `handleGetConfig()`
+**File:** `src/app/web_portal_api_config.cpp` in `handleGetConfig()`
 
 ```cpp
 void handleGetConfig(AsyncWebServerRequest *request) {
@@ -168,7 +171,7 @@ void handleGetConfig(AsyncWebServerRequest *request) {
 
 #### 4. Add to REST API (POST)
 
-**File:** `src/app/web_portal.cpp` in `handlePostConfig()`
+**File:** `src/app/web_portal_api_config.cpp` in `handlePostConfig()`
 
 ```cpp
 void handlePostConfig(AsyncWebServerRequest *request, uint8_t *data, size_t len, ...) {
@@ -263,7 +266,7 @@ struct DeviceConfig {
 
 #### 2. Add to REST API
 
-**File:** `src/app/web_portal.cpp`
+**File:** `src/app/web_portal_api_config.cpp`
 
 ```cpp
 // In handleGetConfig()
@@ -635,7 +638,9 @@ async function loadStatistics() {
 
 #### 4. Add REST API Endpoint
 
-**File:** `src/app/web_portal.cpp`
+**Files:**
+- `src/app/web_portal_pages.cpp` (page routes)
+- `src/app/web_portal_api_*.cpp` (API routes; add to an existing module or create a new one)
 
 ```cpp
 void handleGetStatistics(AsyncWebServerRequest *request);
@@ -682,16 +687,10 @@ void handleGetStatistics(AsyncWebServerRequest *request) {
 
 #### 1. Add Handler Function
 
-**File:** `src/app/web_portal.cpp`
+**File:** `src/app/web_portal_api_system.cpp`
 
 ```cpp
-void handleGetUptime(AsyncWebServerRequest *request);
-
-void web_portal_init(DeviceConfig *config) {
-    // ... existing routes ...
-    
-    server->on("/api/uptime", HTTP_GET, handleGetUptime);
-}
+// Add handler + route inside web_portal_system_register_routes(server)
 
 void handleGetUptime(AsyncWebServerRequest *request) {
     unsigned long uptime_ms = millis();

@@ -769,7 +769,7 @@ Use the reference uploader for both endpoints:
 **ESP32 implementation:**
 - [src/app/strip_decoder.h](../../src/app/strip_decoder.h) - Strip decoder interface
 - [src/app/strip_decoder.cpp](../../src/app/strip_decoder.cpp) - TJpgDec integration
-- [src/app/web_portal.cpp](../../src/app/web_portal.cpp) - HTTP API handler
+- [src/app/image_api.cpp](../../src/app/image_api.cpp) - HTTP API handler
 - [src/app/screen_direct_image.cpp](../../src/app/screen_direct_image.cpp) - LVGL display integration
 
 ---

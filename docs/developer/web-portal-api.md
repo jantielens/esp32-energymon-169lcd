@@ -513,6 +513,7 @@ curl -X DELETE http://energy-monitor.local/api/display/image
 **See Also:**
 - [Image Display User Guide](../user/image-display.md) - Usage examples and troubleshooting
 - [Image Display Implementation](image-display-implementation.md) - Technical deep-dive
+- [Image API Module (Copy/Paste Guide)](image-api-module.md) - Port the endpoints into another project
 - [Home Assistant Integration](../user/home-assistant-integration.md) - Camera snapshot automation
 
 ## System Control

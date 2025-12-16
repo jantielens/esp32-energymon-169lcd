@@ -757,7 +757,8 @@ void loop() {
 
 - `src/app/screen_direct_image.h/cpp` - Direct-to-LCD image session
 - `src/app/strip_decoder.h/cpp` - TJpgDec integration (direct-to-LCD)
-- `src/app/web_portal.cpp` - Image upload API (`/api/display/image`, `/api/display/image/strips`)
+- `src/app/image_api.h/cpp` - Image upload API (`/api/display/image`, `/api/display/image/strips`)
+- `src/app/jpeg_preflight.h/cpp` - JPEG header preflight (baseline + sampling checks)
 - `tools/upload_image.py` - Reference uploader for single + strips
 
 ### Similar Projects

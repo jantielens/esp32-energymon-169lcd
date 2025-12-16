@@ -225,7 +225,7 @@ curl -F 'image=@photo.jpg' 'http://192.168.1.111/api/display/image?timeout=30'
 curl -F 'image=@photo.jpg' 'http://192.168.1.111/api/display/image?timeout=120'
 ```
 
-**Range**: 1-300 seconds (5 minutes maximum)  
+**Range**: 1-86400 seconds (24 hours maximum), or `0` for permanent
 **Default**: 10 seconds if not specified
 
 ## Use Cases
@@ -287,7 +287,7 @@ If exposing to internet, add:
 
 ### Timeout Implementation
 
-- Timer starts when upload completes (before image decode), captured in `web_portal.cpp`
+- Timer starts when upload completes (before image decode)
 - Start time passed through to `DirectImageScreen` via `set_start_time()`
 - Checked every frame in `display_update()`
 - Automatically returns to the previous screen after configured timeout
