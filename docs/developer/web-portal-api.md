@@ -389,6 +389,133 @@ Returns current portal operating mode (AP or WiFi connected).
 - UI adaptation based on mode
 - Network diagnostics
 
+## Image Display
+
+### `POST /api/display/image`
+
+Upload and display a **plain baseline JPEG** image on the LCD with configurable timeout.
+
+**Request:**
+- **Content-Type**: `multipart/form-data`
+- **Field name**: `image`
+- **File**: JPEG file
+- **Max size**: 100KB
+- **Query parameter**: `timeout` (optional) - Display duration in seconds
+
+**Query Parameters:**
+- `timeout` (number, optional): Display timeout in seconds
+  - `0` = Permanent display (no auto-dismiss)
+  - `1-86400` = Timeout in seconds (max 24 hours)
+  - Default: `10` seconds
+  - Timer starts when upload completes (accounts for 1-3s decode time)
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "message": "Image queued for display (30s timeout)"
+}
+```
+
+**Response (Error - Invalid Format):**
+```json
+{
+  "success": false,
+  "message": "Invalid JPEG file"
+}
+```
+
+**Response (Error - Insufficient Memory):**
+```json
+{
+  "success": false,
+  "message": "Insufficient memory: need 35KB, have 28KB. Try reducing image size."
+}
+```
+
+**Notes:**
+- Supported format: JPEG (0xFF 0xD8 0xFF)
+- Images stored in RAM only (lost on reboot)
+- JPEG decoding supports a subset of baseline JPEG encodings (progressive JPEG is rejected)
+- Image dimensions must match the panel (currently `240×280`)
+- No client-side RGB↔BGR conversion is required for this API
+- Concurrent uploads: second upload waits up to 1 second for first to complete
+- After timeout, display returns to power screen automatically
+- `timeout=0` makes image permanent until manually dismissed
+
+**Examples:**
+```bash
+# Display image with default 10 second timeout
+curl -X POST -F "image=@photo.jpg" http://energy-monitor.local/api/display/image
+
+# Display image for 30 seconds
+curl -X POST -F "image=@photo.jpg" 'http://energy-monitor.local/api/display/image?timeout=30'
+
+# Permanent display (no auto-dismiss)
+curl -X POST -F "image=@photo.jpg" 'http://energy-monitor.local/api/display/image?timeout=0'
+
+# Display for 1 hour
+curl -X POST -F "image=@photo.jpg" 'http://energy-monitor.local/api/display/image?timeout=3600'
+
+# Using the provided upload tool
+cd tools
+python3 upload_image.py 192.168.1.100 photo.jpg --mode single
+```
+
+### `POST /api/display/image/strips`
+
+Upload and display an image as a sequence of **independent JPEG strips**.
+
+**Request:**
+- **Content-Type**: `application/octet-stream`
+- **Body**: a single JPEG strip (baseline JPEG)
+- **Query parameters**:
+  - `strip_index` (required): 0-based strip index (must be uploaded in order)
+  - `strip_count` (required): total number of strips
+  - `width` (required): full image width
+  - `height` (required): full image height
+  - `timeout` (optional): display timeout in seconds
+
+**Notes:**
+- Each request is stateless/atomic: the device allocates a buffer for that request, decodes, then frees it.
+- The device advances the vertical offset based on each decoded fragment's height, so fragments must be sent sequentially.
+
+**Example:**
+```bash
+curl -X POST \
+  --data-binary @strip0.jpg \
+  -H 'Content-Type: application/octet-stream' \
+  'http://energy-monitor.local/api/display/image/strips?strip_index=0&strip_count=9&width=240&height=280&timeout=10'
+```
+
+### `DELETE /api/display/image`
+
+Manually dismiss the currently displayed image and return to power screen.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Image dismissed"
+}
+```
+
+**Notes:**
+- Works for both timed and permanent (`timeout=0`) images
+- No effect if no image is currently displayed
+- Immediately returns to power screen
+
+**Example:**
+```bash
+curl -X DELETE http://energy-monitor.local/api/display/image
+```
+
+**See Also:**
+- [Image Display User Guide](../user/image-display.md) - Usage examples and troubleshooting
+- [Image Display Implementation](image-display-implementation.md) - Technical deep-dive
+- [Image API Module (Copy/Paste Guide)](image-api-module.md) - Port the endpoints into another project
+- [Home Assistant Integration](../user/home-assistant-integration.md) - Camera snapshot automation
+
 ## System Control
 
 ### `POST /api/reboot`

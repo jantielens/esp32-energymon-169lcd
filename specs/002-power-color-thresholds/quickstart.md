@@ -21,7 +21,7 @@ This guide provides step-by-step implementation instructions for adding configur
 ✅ Existing codebase understanding:
 - DeviceConfig struct in `config_manager.h`
 - PowerScreen class in `screen_power.cpp/h`
-- Web portal in `web_portal.cpp` and `src/app/web/home.html`
+- Web portal modules in `web_portal*.cpp` and `src/app/web/home.html`
 - NVS configuration persistence pattern
 
 ✅ Development environment:
@@ -235,7 +235,7 @@ bool config_manager_validate(const DeviceConfig* config);
 
 ### Step 5: Extend Web API Handlers
 
-**File**: `src/app/web_portal.cpp`
+**File**: `src/app/web_portal_api_config.cpp`
 
 #### 5a. Add Color Parsing Helper
 
@@ -638,7 +638,7 @@ If issues arise post-deployment:
 2. `config_manager.cpp` - Defaults + validation
 3. `screen_power.cpp` - Unified color algorithm
 4. `screen_power.h` - Method declarations
-5. `web_portal.cpp` - API handlers + color parsing
+5. `web_portal_api_config.cpp` - API handlers + color parsing
 6. `web/home.html` - Threshold + color form fields
 7. `web/portal.js` - Validation + load/save logic
 

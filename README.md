@@ -35,6 +35,14 @@ A WiFi-connected real-time energy monitoring display for home solar and grid pow
 - **Network Configuration** - WiFi, device name, static IP settings
 - **MQTT Settings** - Broker, topics, credentials
 - **Power Threshold Configuration** - Custom colors and thresholds
+- **Image Display API** - Show camera snapshots, QR codes, or alerts (configurable timeout: 0=permanent, max 24h)
+
+### 🖼️ Image Upload (Image Display API)
+- **Upload a JPEG via HTTP** and render it directly on the LCD
+- **Configurable duration** via `timeout` query param (`0` = permanent, max 86400 seconds)
+- **Dismiss with a DELETE** to return to the normal power screen
+
+See [docs/user/image-display.md](docs/user/image-display.md) for usage details and [docs/user/home-assistant-integration.md](docs/user/home-assistant-integration.md) for camera snapshot examples.
 
 ### 🔧 Developer-Friendly
 - **Multi-Board Support** - ESP32 DevKit V1 and ESP32-C3 Super Mini
@@ -87,6 +95,8 @@ See [docs/developer/building-from-source.md](docs/developer/building-from-source
 - **[GETTING-STARTED.md](GETTING-STARTED.md)** - Flashing firmware, first-boot setup
 - **[Configuration Guide](docs/user/configuration.md)** - Web portal features and settings
 - **[MQTT Integration](docs/user/mqtt-integration.md)** - Home Assistant setup examples
+- **[Image Display](docs/user/image-display.md)** - Upload and display images via HTTP API
+- **[Home Assistant Image Integration](docs/user/home-assistant-integration.md)** - Camera snapshots on ESP32 display
 - **[Power Thresholds](docs/user/power-thresholds.md)** - Customizing color indicators
 - **[OTA Updates](docs/user/ota-updates.md)** - Updating firmware over WiFi
 - **[Troubleshooting](docs/user/troubleshooting.md)** - Common problems and solutions
@@ -95,6 +105,7 @@ See [docs/developer/building-from-source.md](docs/developer/building-from-source
 - **[Building from Source](docs/developer/building-from-source.md)** - Setup, build system, scripts
 - **[Multi-Board Support](docs/developer/multi-board-support.md)** - Adding new board variants
 - **[LVGL Display System](docs/developer/lvgl-display-system.md)** - Display architecture, BGR fix
+- **[Image Display Implementation](docs/developer/image-display-implementation.md)** - Technical deep-dive: baseline JPEG, direct-to-LCD decode, chunk uploads
 - **[Web Portal API](docs/developer/web-portal-api.md)** - REST API reference
 - **[Adding Features](docs/developer/adding-features.md)** - Code structure, contributing
 - **[Icon System](docs/developer/icon-system.md)** - PNG to LVGL conversion
@@ -128,6 +139,15 @@ curl -X POST http://<device-ip>/api/config \
 # Get/Set LCD brightness (0-100%)
 curl http://<device-ip>/api/brightness
 curl -X POST http://<device-ip>/api/brightness -d "75"
+
+# Display image (default 10s timeout)
+curl -X POST -F "image=@photo.jpg" http://<device-ip>/api/display/image
+
+# Display image with custom timeout (0=permanent, max 86400)
+curl -X POST -F "image=@photo.jpg" http://<device-ip>/api/display/image?timeout=30
+
+# Dismiss current image
+curl -X DELETE http://<device-ip>/api/display/image
 
 # Reboot device
 curl -X POST http://<device-ip>/api/reboot
@@ -191,7 +211,11 @@ esp32-energymon-169lcd/
 │   │   ├── display_manager.cpp/h  # LVGL display driver
 │   │   ├── mqtt_manager.cpp/h     # MQTT client
 │   │   ├── config_manager.cpp/h   # NVS configuration
-│   │   ├── web_portal.cpp/h       # Web server + REST API
+│   │   ├── web_portal.cpp/h       # Web portal composition root (server + captive portal)
+│   │   ├── web_portal_pages.cpp/h # Web UI routes (HTML/CSS/JS)
+│   │   ├── web_portal_api_*.cpp/h # REST API modules (config/system/brightness/OTA)
+│   │   ├── image_api.cpp/h        # Image Display API routes (copyable module)
+│   │   ├── jpeg_preflight.cpp/h   # JPEG header preflight for TJpgDec/tjpgd
 │   │   └── web/               # HTML/CSS/JS assets
 │   ├── boards/
 │   │   ├── esp32/             # ESP32 DevKit V1 pin config

@@ -36,6 +36,7 @@ void web_portal_init(DeviceConfig *config);        // Initialize web server and 
 void web_portal_start_ap();                        // Start AP mode with captive portal (core mode)
 void web_portal_stop_ap();                         // Stop AP mode
 void web_portal_handle();                          // Handle web server (call in loop)
+void web_portal_process_pending();                 // Process pending image operations (call in loop)
 bool web_portal_is_ap_mode();                      // Check if in AP mode
 bool web_portal_ota_in_progress();                 // Check if OTA update is in progress
 

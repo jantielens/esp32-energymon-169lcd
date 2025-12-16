@@ -415,7 +415,14 @@ void PowerScreen::hide() {
 }
 
 void PowerScreen::set_solar_power(float kw) {
-    solar_kw = kw;
+    solar_kw = kw;  // Always update internal state for statistics
+    
+    // Skip widget updates if screen is not visible (prevents race conditions)
+    if (!visible) {
+        // Still update statistics even when not visible
+        update_statistics();
+        return;
+    }
     
     if (solar_value) {
         if (isnan(kw)) {
@@ -442,7 +449,14 @@ void PowerScreen::set_solar_power(float kw) {
 }
 
 void PowerScreen::set_grid_power(float kw) {
-    grid_kw = kw;
+    grid_kw = kw;  // Always update internal state for statistics
+    
+    // Skip widget updates if screen is not visible (prevents race conditions)
+    if (!visible) {
+        // Still update statistics even when not visible
+        update_statistics();
+        return;
+    }
     
     if (grid_value) {
         if (isnan(kw)) {
@@ -470,6 +484,7 @@ void PowerScreen::set_grid_power(float kw) {
 
 void PowerScreen::update_home_value() {
     if (!home_value) return;
+    if (!visible) return;  // Skip widget updates if screen is not visible
     
     // Calculate home consumption: home = grid + solar
     if (!isnan(solar_kw) && !isnan(grid_kw)) {
@@ -484,6 +499,8 @@ void PowerScreen::update_home_value() {
 }
 
 void PowerScreen::update_bar_charts() {
+    if (!visible) return;  // Skip widget updates if screen is not visible
+    
     // Update solar bar (0-3kW range, show absolute value)
     if (solar_bar) {
         if (!isnan(solar_kw)) {
@@ -555,6 +572,8 @@ void PowerScreen::update_statistics() {
 }
 
 void PowerScreen::update_stat_overlays() {
+    if (!visible) return;  // Skip widget updates if screen is not visible
+    
     // Bar positioning constants
     const float bar_max_kw = 3.0f;
     const int32_t bar_y = 140;

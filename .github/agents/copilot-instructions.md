@@ -150,8 +150,11 @@ See `docs/wsl-development.md` for complete USB/IP setup guide.
 - `src/app/app.ino` - Main sketch file (standard Arduino structure)
 - `src/app/board_config.h` - Default board configuration (LED pins, WiFi settings)
 - `src/boards/[board-name]/board_overrides.h` - Optional board-specific compile-time configuration
-- `src/app/web_portal.cpp/h` - Async web server and REST API endpoints
-- `src/app/web_assets.cpp/h` - Embedded HTML/CSS/JS from `web/` directory
+- `src/app/web_portal.cpp/h` - Web portal composition root (server + captive portal + wiring)
+- `src/app/web_portal_pages.cpp/h` - Web UI routes (HTML/CSS/JS)
+- `src/app/web_portal_api_*.cpp/h` - REST API modules (config/system/brightness/OTA)
+- `src/app/image_api.cpp/h` - Image Display API routes (copyable module)
+- `src/app/web_assets.h` - Embedded HTML/CSS/JS from `web/` directory
 - `src/app/config_manager.cpp/h` - NVS-based configuration storage
 - `src/app/web/_header.html` - Common HTML head template
 - `src/app/web/_nav.html` - Navigation tabs and loading overlay wrapper

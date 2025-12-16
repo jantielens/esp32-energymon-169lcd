@@ -317,7 +317,7 @@
 #define LV_USE_FS_LITTLEFS 0
 #define LV_USE_PNG 0
 #define LV_USE_BMP 0
-#define LV_USE_SJPG 0
+#define LV_USE_SJPG 1  // Enable split-JPEG decoder support
 #define LV_USE_GIF 0
 #define LV_USE_QRCODE 0
 #define LV_USE_FREETYPE 0
