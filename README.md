@@ -37,6 +37,13 @@ A WiFi-connected real-time energy monitoring display for home solar and grid pow
 - **Power Threshold Configuration** - Custom colors and thresholds
 - **Image Display API** - Show camera snapshots, QR codes, or alerts (configurable timeout: 0=permanent, max 24h)
 
+### 🖼️ Image Upload (Image Display API)
+- **Upload a JPEG via HTTP** and render it directly on the LCD
+- **Configurable duration** via `timeout` query param (`0` = permanent, max 86400 seconds)
+- **Dismiss with a DELETE** to return to the normal power screen
+
+See [docs/user/image-display.md](docs/user/image-display.md) for usage details and [docs/user/home-assistant-integration.md](docs/user/home-assistant-integration.md) for camera snapshot examples.
+
 ### 🔧 Developer-Friendly
 - **Multi-Board Support** - ESP32 DevKit V1 and ESP32-C3 Super Mini
 - **One-Command Build System** - `./build.sh` compiles for all boards

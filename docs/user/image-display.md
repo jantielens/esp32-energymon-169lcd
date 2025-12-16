@@ -9,6 +9,7 @@ Display custom JPEG images on the ESP32 Energy Monitor's 1.69" LCD screen via RE
 - **Manual Dismiss**: DELETE endpoint to immediately return to power screen
 - **Memory Safe**: Works within ESP32-C3's 320KB RAM constraints
 - **MQTT Friendly**: Power monitoring continues in background during image display
+- **Strip Uploads**: Memory-efficient upload mode that sends the image as multiple smaller JPEG "strips"
 
 ## API Endpoints
 
@@ -45,6 +46,40 @@ Content-Type: multipart/form-data
 - `400` - Invalid request (not a JPEG, missing data)
 - `507` - Insufficient memory
 
+### Upload and Display Image (Strip Upload)
+
+Use this endpoint when you want a more memory-friendly upload (the image is uploaded and decoded as multiple smaller JPEG fragments).
+
+```http
+POST /api/display/image/strips?strip_index=<n>&strip_count=<total>&width=<w>&height=<h>[&timeout=<seconds>]
+Content-Type: application/octet-stream
+
+<JPEG strip bytes>
+```
+
+**Query Parameters:**
+- `strip_index` (required): Zero-based index of this strip
+- `strip_count` (required): Total number of strips for this image
+- `width` (required): Full image width in pixels (must be <= 240)
+- `height` (required): Full image height in pixels (must be <= 280)
+- `timeout` (optional): Display timeout in seconds (0=permanent, 1-86400, default: 10). Practically, you only need to pass this on `strip_index=0`.
+
+**Response (Success):**
+```json
+{
+  "success": true,
+  "strip_index": 0,
+  "strip_count": 9,
+  "complete": false
+}
+```
+
+**HTTP Status Codes:**
+- `200` - Strip received and decoded successfully
+- `400` - Invalid request (missing parameters / invalid JPEG / unsupported JPEG fragment)
+- `500` - Decode failed / incomplete upload
+- `507` - Insufficient memory
+
 ### Manually Dismiss Image
 
 ```http
@@ -55,7 +90,7 @@ DELETE /api/display/image
 ```json
 {
   "success": true,
-  "message": "Image dismissed"
+  "message": "Image dismiss queued"
 }
 ```
 
@@ -109,6 +144,9 @@ print(response.json())
 
 ```bash
 python3 tools/upload_image.py 192.168.1.100 photo.jpg --mode single
+
+# Memory-efficient strip upload (recommended for ESP32-C3)
+python3 tools/upload_image.py 192.168.1.100 photo.jpg --mode strip --strip-height 32
 ```
 
 ## Image Requirements
@@ -154,9 +192,17 @@ img.save('output.jpg', 'JPEG', quality=75, optimize=True)
 
 **Note on timeout timing:** The timeout timer starts when the upload completes (before image decoding begins). This ensures you get the full requested display time, accounting for the 1-3 seconds of JPEG decode time.
 
+### Strip Upload Flow
+
+1. **Split**: Client splits the image into N horizontal strips (for example 32px tall)
+2. **Upload**: Client uploads strips in order using `/api/display/image/strips?strip_index=...&strip_count=...&width=...&height=...`
+3. **Decode per strip**: Each strip is decoded synchronously as it arrives
+4. **Complete**: When the final strip is uploaded (`complete: true`), the image is fully displayed
+
 ### Image Scaling
 
 - **Currently requires exact 240×280** for `/api/display/image`
+- **No automatic scaling** for `/api/display/image/strips` (the `width`/`height` parameters must match the intended on-screen size)
 
 ### Memory Usage
 
@@ -166,6 +212,8 @@ img.save('output.jpg', 'JPEG', quality=75, optimize=True)
 | Upload buffer | Same as file size |
 | JPEG decoder working | ~4,000 |
 | **Peak usage** | **~10-60 KB** |
+
+**Strip uploads:** peak RAM usage is typically lower because the device only buffers one strip at a time.
 
 ## Troubleshooting
 
