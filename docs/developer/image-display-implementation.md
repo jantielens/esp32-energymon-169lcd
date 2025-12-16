@@ -114,11 +114,11 @@ Cons:
 ```
 SJPG Header Structure (offset: content):
 0-7:   "_SJPG__" magic bytes + version
-14-15: Image width (uint16, big-endian)
-16-17: Image height (uint16, big-endian)
+14-15: Image width (uint16, little-endian)
+16-17: Image height (uint16, little-endian)
 18-19: Number of frames/strips (uint16)
 20-21: Block height in pixels (uint16)
-22+:   Frame offset array
+22+:   Per-strip length table (uint16 per strip)
 Data:  Multiple JPEG fragments (one per horizontal strip)
 ```
 

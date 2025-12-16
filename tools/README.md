@@ -27,7 +27,6 @@ This directory contains build-time and runtime tools for the ESP32 Energy Monito
 ### upload_image.py ⭐ **Main Image Upload Tool**
 **Purpose:** Upload images to ESP32 device (JPG/SJPG) with automatic SJPG conversion and BGR color swap  
 **Features:**
-- Automatic mode selection (single-file vs strip-based)
 - Configurable strip height (8, 16, 32, 64 pixels)
 - BGR color swap for ST7789V2 displays
 - Debug mode (upload specific strips)
@@ -35,9 +34,6 @@ This directory contains build-time and runtime tools for the ESP32 Energy Monito
 
 **Usage:**
 ```bash
-# Auto mode (chooses best method based on image size)
-python3 upload_image.py 192.168.1.111 photo.jpg
-
 # Strip-based upload with 32px strips (memory efficient for large images)
 python3 upload_image.py 192.168.1.111 photo.jpg --mode strip --strip-height 32
 

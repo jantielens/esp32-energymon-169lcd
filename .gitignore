@@ -27,3 +27,12 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Microsoft Purview / Endpoint DLP sidecars
+*:sec.endpointdlp

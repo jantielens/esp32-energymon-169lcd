@@ -95,7 +95,7 @@ Each strip is a valid JPEG image of size: [width] × [strip_height]
 │     → photo.sjpg (contains N independent JPEGs)             │
 │      ↓                                                       │
 │  4. Extract individual strips (upload_strips.py)             │
-│     Parses SJPG header, extracts strip offsets               │
+│     Parses SJPG header, extracts strip lengths (cumulative)  │
 │      ↓                                                       │
 │  5. Upload each strip via HTTP                               │
 │     POST /api/display/strip?index=0&total=N&width=W&height=H │
@@ -181,7 +181,7 @@ JPEG_SPLIT_HEIGHT = 32  # Pixels per strip (configurable: 8, 16, 32, 64...)
 # 1. Splits source image into horizontal slices of JPEG_SPLIT_HEIGHT
 # 2. Encodes each slice as independent JPEG
 # 3. Packages JPEGs into SJPG container with header
-# 4. Header includes: width, height, strip_count, strip_height, offsets
+# 4. Header includes: width, height, strip_count, strip_height, per-strip lengths
 ```
 
 **Strip size trade-offs:**
@@ -222,29 +222,28 @@ def parse_sjpg(sjpg_file):
     
     print(f"SJPG: {width}x{height}, {num_strips} strips ({block_height}px each)")
     
-    # Parse strip offsets (2 bytes per offset, starting at byte 22)
-    offsets = []
+    # Parse strip length table (2 bytes per strip, starting at byte 22)
+    lengths = []
     pos = 22
     for i in range(num_strips):
-        offset = struct.unpack('<H', data[pos:pos+2])[0]
-        offsets.append(offset)
+        length = struct.unpack('<H', data[pos:pos+2])[0]
+        lengths.append(length)
         pos += 2
     
     # Header size = 22 + (num_strips * 2)
     header_size = pos
     
-    # Extract each strip (JPEG data between offsets)
+    # Extract each strip (JPEG data using cumulative lengths)
     strips = []
+    offset = 0
     for i in range(num_strips):
-        start = header_size + offsets[i]
-        if i + 1 < num_strips:
-            end = header_size + offsets[i + 1]
-        else:
-            end = len(data)
+        start = header_size + offset
+        end = start + lengths[i]
+        offset += lengths[i]
         
         strip_jpeg = data[start:end]
         strips.append(strip_jpeg)
-        print(f"  Strip {i}: {len(strip_jpeg)} bytes (offset {offsets[i]})")
+        print(f"  Strip {i}: {len(strip_jpeg)} bytes")
     
     return width, height, block_height, strips
 ```

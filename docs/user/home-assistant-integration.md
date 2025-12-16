@@ -4,7 +4,7 @@ Display camera snapshots on your ESP32 Energy Monitor from Home Assistant automa
 
 ## Overview
 
-This guide shows how to send camera images from Home Assistant to your ESP32 device using AppDaemon. When a doorbell rings, motion is detected, or any other trigger occurs, the camera snapshot will display on the ESP32's LCD screen (default: 10 seconds, configurable up to 5 minutes).
+This guide shows how to send camera images from Home Assistant to your ESP32 device using AppDaemon. When a doorbell rings, motion is detected, or any other trigger occurs, the camera snapshot will display on the ESP32's LCD screen (default: 10 seconds, configurable up to 24 hours; 0 = permanent).
 
 **Architecture:**
 ```
