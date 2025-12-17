@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [1.4.1] - 2025-12-17
+
 ### Fixed
 - **Image Display (TJpgDec)**: Use chip-specific ESP-ROM `tjpgd.h` headers and ROM callback signatures to avoid board-dependent JPEG decode failures (e.g., `jd_prepare failed: 2`) caused by ABI mismatches across ESP32-family targets.
 
