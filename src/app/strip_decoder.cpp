@@ -12,53 +12,73 @@
 #include <lvgl.h>
 
 // TJpgDec (tjpgd) decoder implementation
-// Declare the functions and types we need from tjpgd
-extern "C" {
-    // TJpgDec types and constants
-    typedef struct {
-        uint16_t left, right, top, bottom;
-    } JRECT;
-    
-    typedef struct JDEC JDEC;
-    struct JDEC {
-        size_t dctr;                // Number of bytes available in the input buffer
-        uint8_t* dptr;              // Current data read ptr
-        uint8_t* inbuf;             // Bit stream input buffer
-        uint8_t dmsk;               // Current bit in the current read byte
-        uint8_t scale;              // Output scaling ratio
-        uint8_t msx, msy;           // MCU size in unit of block (width, height)
-        uint8_t qtid[3];            // Quantization table ID of each component
-        int16_t dcv[3];             // Previous DC element of each component
-        uint16_t nrst;              // Restart interval
-        uint16_t width, height;     // Size of the input image (pixel)
-        uint8_t* huffbits[2][2];    // Huffman bit distribution tables [id][dcac]
-        uint16_t* huffcode[2][2];   // Huffman code word tables [id][dcac]
-        uint8_t* huffdata[2][2];    // Huffman decoded data tables [id][dcac]
-        int32_t* qttbl[4];          // Dequantizer tables [id]
-        void* workbuf;              // Working buffer for IDCT and RGB output
-        uint8_t* mcubuf;            // Working buffer for the MCU
-        void* pool;                 // Pointer to available memory pool
-        size_t sz_pool;             // Size of momory pool (bytes available)
-        size_t (*infunc)(JDEC*, uint8_t*, size_t);  // Pointer to jpeg stream input function
-        void* device;               // Pointer to I/O device identifiler for the session
-    };
-    
-    typedef enum {
-        JDR_OK = 0, // 0: Succeeded
-        JDR_INTR,   // 1: Interrupted by output function
-        JDR_INP,    // 2: Device error or wrong termination of input stream
-        JDR_MEM1,   // 3: Insufficient memory pool for the image
-        JDR_MEM2,   // 4: Insufficient stream input buffer
-        JDR_PAR,    // 5: Parameter error
-        JDR_FMT1,   // 6: Data format error (may be damaged data)
-        JDR_FMT2,   // 7: Right format but not supported
-        JDR_FMT3    // 8: Not supported JPEG standard
-    } JRESULT;
-    
-    // TJpgDec functions
-    JRESULT jd_prepare(JDEC* jd, size_t (*infunc)(JDEC*, uint8_t*, size_t), void* pool, size_t sz_pool, void* dev);
-    JRESULT jd_decomp(JDEC* jd, int (*outfunc)(JDEC*, void*, JRECT*), uint8_t scale);
-}
+// Use the ESP-ROM TJpgDec header for the active target.
+// Why: Arduino-ESP32 typically links jd_prepare/jd_decomp to the chip ROM implementation. The ROM ABI
+// (types, struct layout, and callback signatures) is chip-specific; mismatches can compile but fail at
+// runtime (often as JDR_INP / jd_prepare failed).
+// Prefer CONFIG_IDF_TARGET_* when available (more robust if multiple chip headers are visible).
+// Fall back to __has_include for toolchains that don't define CONFIG_IDF_TARGET_*.
+#if defined(CONFIG_IDF_TARGET_ESP32)
+    #include <esp32/rom/tjpgd.h>
+#elif defined(CONFIG_IDF_TARGET_ESP32S2)
+    #if __has_include(<esp32s2/rom/tjpgd.h>)
+        #include <esp32s2/rom/tjpgd.h>
+    #else
+        #error "Missing <esp32s2/rom/tjpgd.h> in this Arduino-ESP32 install"
+    #endif
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
+    #include <esp32s3/rom/tjpgd.h>
+#elif defined(CONFIG_IDF_TARGET_ESP32C2)
+    #if __has_include(<esp32c2/rom/tjpgd.h>)
+        #include <esp32c2/rom/tjpgd.h>
+    #else
+        #error "Missing <esp32c2/rom/tjpgd.h> in this Arduino-ESP32 install"
+    #endif
+#elif defined(CONFIG_IDF_TARGET_ESP32C3)
+    #include <esp32c3/rom/tjpgd.h>
+#elif defined(CONFIG_IDF_TARGET_ESP32C5)
+    #if __has_include(<esp32c5/rom/tjpgd.h>)
+        #include <esp32c5/rom/tjpgd.h>
+    #else
+        #error "Missing <esp32c5/rom/tjpgd.h> in this Arduino-ESP32 install"
+    #endif
+#elif defined(CONFIG_IDF_TARGET_ESP32C6)
+    #include <esp32c6/rom/tjpgd.h>
+#elif defined(CONFIG_IDF_TARGET_ESP32H2)
+    #if __has_include(<esp32h2/rom/tjpgd.h>)
+        #include <esp32h2/rom/tjpgd.h>
+    #else
+        #error "Missing <esp32h2/rom/tjpgd.h> in this Arduino-ESP32 install"
+    #endif
+#elif defined(CONFIG_IDF_TARGET_ESP32P4)
+    #if __has_include(<esp32p4/rom/tjpgd.h>)
+        #include <esp32p4/rom/tjpgd.h>
+    #else
+        #error "Missing <esp32p4/rom/tjpgd.h> in this Arduino-ESP32 install"
+    #endif
+#else
+    #if __has_include(<esp32/rom/tjpgd.h>)
+        #include <esp32/rom/tjpgd.h>
+    #elif __has_include(<esp32s3/rom/tjpgd.h>)
+        #include <esp32s3/rom/tjpgd.h>
+    #elif __has_include(<esp32c6/rom/tjpgd.h>)
+        #include <esp32c6/rom/tjpgd.h>
+    #elif __has_include(<esp32c5/rom/tjpgd.h>)
+        #include <esp32c5/rom/tjpgd.h>
+    #elif __has_include(<esp32c3/rom/tjpgd.h>)
+        #include <esp32c3/rom/tjpgd.h>
+    #elif __has_include(<esp32s2/rom/tjpgd.h>)
+        #include <esp32s2/rom/tjpgd.h>
+    #elif __has_include(<esp32c2/rom/tjpgd.h>)
+        #include <esp32c2/rom/tjpgd.h>
+    #elif __has_include(<esp32h2/rom/tjpgd.h>)
+        #include <esp32h2/rom/tjpgd.h>
+    #elif __has_include(<esp32p4/rom/tjpgd.h>)
+        #include <esp32p4/rom/tjpgd.h>
+    #else
+        #error "Unsupported ESP32 target for TJpgDec (no ROM tjpgd.h found)"
+    #endif
+#endif
 
 // Input buffer context for TJpgDec
 struct JpegInputContext {
@@ -85,8 +105,8 @@ struct JpegSessionContext {
 };
 
 // TJpgDec input function - read from memory buffer
-// Signature must match jd_prepare: size_t (*)(JDEC*, uint8_t*, size_t)
-static size_t jpeg_input_func(JDEC* jd, uint8_t* buff, size_t nbyte) {
+// Signature must match ROM: UINT (*)(JDEC*, BYTE*, UINT)
+static UINT jpeg_input_func(JDEC* jd, BYTE* buff, UINT nbyte) {
     JpegSessionContext* session = (JpegSessionContext*)jd->device;
     if (!session) return 0;
 
@@ -95,18 +115,19 @@ static size_t jpeg_input_func(JDEC* jd, uint8_t* buff, size_t nbyte) {
     if (ctx->pos >= ctx->size) return 0;
 
     const size_t remaining = ctx->size - ctx->pos;
-    const size_t to_read = (nbyte < remaining) ? nbyte : remaining;
+    const size_t requested = (size_t)nbyte;
+    const size_t to_read = (requested < remaining) ? requested : remaining;
 
     if (buff && to_read > 0) {
         memcpy(buff, ctx->data + ctx->pos, to_read);
     }
 
     ctx->pos += to_read;
-    return to_read;
+    return (UINT)to_read;
 }
 
 // TJpgDec output function - convert RGB888→(BGR565 or RGB565) and write to LCD
-static int jpeg_output_func(JDEC* jd, void* bitmap, JRECT* rect) {
+static UINT jpeg_output_func(JDEC* jd, void* bitmap, JRECT* rect) {
     JpegSessionContext* session = (JpegSessionContext*)jd->device;
     JpegOutputContext* ctx = session ? &session->output : nullptr;
     uint8_t* src = (uint8_t*)bitmap;
@@ -224,7 +245,7 @@ bool StripDecoder::decode_strip(const uint8_t* jpeg_data, size_t jpeg_size, int 
     
     // Prepare decoder
     Logger.logMessage("StripDecoder", "Calling jd_prepare...");
-    res = jd_prepare(&jdec, jpeg_input_func, work, work_size, &session_ctx);
+    res = jd_prepare(&jdec, jpeg_input_func, work, (UINT)work_size, &session_ctx);
     
     if (res != JDR_OK) {
         Logger.logLinef("ERROR: jd_prepare failed: %d", res);
@@ -238,7 +259,7 @@ bool StripDecoder::decode_strip(const uint8_t* jpeg_data, size_t jpeg_size, int 
     
     // Decompress and output to LCD
     Logger.logMessage("StripDecoder", "Calling jd_decomp...");
-    res = jd_decomp(&jdec, jpeg_output_func, 0);  // 0 = 1:1 scale
+    res = jd_decomp(&jdec, jpeg_output_func, (BYTE)0);  // 0 = 1:1 scale
     
     if (res != JDR_OK) {
         Logger.logLinef("ERROR: jd_decomp failed: %d", res);
